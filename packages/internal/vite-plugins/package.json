@@ -1,0 +1,25 @@
+{
+  "name": "@marketing/vite-plugin",
+  "private": true,
+  "version": "5.5.1",
+  "type": "module",
+  "scripts": {
+    "stub": "pnpm unbuild --stub"
+  },
+  "main": "./dist/index.mjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./dist/index.mjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "devDependencies": {
+    "p-queue": "catalog:",
+    "rollup-plugin-copy": "catalog:"
+  }
+}

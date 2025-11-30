@@ -1,0 +1,28 @@
+{
+  "auth": {
+    "login": "登录",
+    "register": "注册",
+    "codeLogin": "验证码登录",
+    "qrcodeLogin": "二维码登录",
+    "forgetPassword": "忘记密码",
+    "pageTitle": "这是一个大标题",
+    "pageDesc": "这是一个小标题",
+    "loginTitle": " ",
+    "loginSubTitle": "欢迎回来"
+  },
+  "dashboard": {
+    "title": "概览",
+    "home": "首页",
+    "analytics": "分析页",
+    "workspace": "工作台"
+  },
+  "account": {
+    "title": "账号"
+  },
+  "customer": {
+    "title": "客服"
+  },
+  "companyUser": {
+    "title": "用户管理"
+  }
+}

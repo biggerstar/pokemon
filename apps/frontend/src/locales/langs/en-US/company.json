@@ -1,0 +1,12 @@
+{
+  "user": {
+    "list": "User List",
+    "name": "User",
+    "create": "Create User",
+    "update": "Update User",
+    "delete": "Delete User",
+    "password": "Reset Password",
+    "password_update": "Update Password",
+    "password_reset": "Reset Password"
+  }
+}

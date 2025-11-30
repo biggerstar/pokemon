@@ -1,0 +1,45 @@
+{
+  "name": "econmerce-crawler-junpu-52",
+  "private": true,
+  "version": "0.0.8",
+  "main": "marketing/main/index.js",
+  "description": "",
+  "type": "commonjs",
+  "scripts": {
+    "format": "prettier --write .",
+    "lint": "eslint . --ext .js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts,.vue --fix",
+    "dev": "pnpm vite --mode development ",
+    "build": "rimraf marketing && pnpm vite build --mode production",
+    "preview:electron": "electron marketing/main/index.js",
+    "pack:unpack": "pnpm -w run build && electron-builder --dir",
+    "pack:win": "pnpm -w run build && electron-builder --win",
+    "pack:mac": "pnpm -w run build && electron-builder --mac",
+    "pack:linux": "pnpm -w run build && electron-builder --linux"
+  },
+  "dependencies": {
+    "@xcodebuild/global-proxy": "^0.0.6",
+    "crypto-js": "^4.2.0",
+    "custom-electron-titlebar": "^4.2.8",
+    "deepmerge": "^4.3.1",
+    "electron-store": "^11.0.2",
+    "iconv-lite": "^0.6.3",
+    "md5": "^2.3.0",
+    "reflect-metadata": "^0.2.2",
+    "set-global-proxy": "^0.2.4",
+    "sqlite3": "^5.1.7",
+    "sudo-prompt": "^9.2.1",
+    "typeorm": "0.3.17",
+    "whistle": "^2.9.99"
+  },
+  "devDependencies": {
+    "@marketing/frontend": "workspace:*",
+    "@marketing/vite-plugin": "workspace:*",
+    "@types/md5": "^2.3.5",
+    "electron": "catalog:",
+    "electron-builder": "^26.0.12",
+    "rimraf": "catalog:",
+    "rollup-plugin-copy": "catalog:",
+    "vite-plugin-electron": "catalog:",
+    "vite-plugin-electron-renderer": "catalog:"
+  }
+}

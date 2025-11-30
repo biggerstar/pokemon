@@ -1,0 +1,12 @@
+{
+  "user": {
+    "list": "用户列表",
+    "name": "用户",
+    "create": "创建用户",
+    "update": "更新用户",
+    "delete": "删除用户",
+    "password": "重置密码",
+    "password_update": "更新密码",
+    "password_reset": "重置密码"
+  }
+}

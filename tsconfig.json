@@ -1,0 +1,52 @@
+{
+  "compilerOptions": {
+    "baseUrl": "./",
+    "target": "ESNext",
+    "module": "ESNext",
+    "lib": [
+      "ESNext",
+      "ES6",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "skipLibCheck": true,
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noImplicitAny": false,
+    "noEmit": false,
+    "allowJs": true,
+    "noEmitOnError": true,
+    "noUncheckedIndexedAccess": false,
+    "noErrorTruncation": false,
+    "noImplicitUseStrict": false,
+    "jsx": "preserve",
+    /* Linting */
+    "strict": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noFallthroughCasesInSwitch": false,
+    "allowSyntheticDefaultImports": true,
+    "paths": {
+      "@/*": [
+        "packages/frontend/src/*"
+      ],
+      "@type/*": [
+        "packages/frontend/src/types/*"
+      ]
+    },
+  },
+  "ts-node": {
+    "esm": true
+  },
+  "exclude": [
+    "node_modules" // 排除的文件或文件夹路径
+  ],
+  "include": [
+    "packages/**/*.js",
+    "packages/**/*.ts",
+    "packages/**/*.d.ts",
+    "packages/**/*.tsx",
+    "packages/**/*.vue"
+  ]
+}

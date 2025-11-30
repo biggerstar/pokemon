@@ -1,0 +1,39 @@
+// @see https://www.electron.build/configuration/configuration
+{
+  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+  "appId": "god",
+  "asar": true,
+  "productName": "开云",
+  "directories": {
+    "output": "release/${version}",
+  },
+  "files": ["marketing"],
+  "mac": {
+    // "icon": "public/icons/mac/icon.icns",
+    "target": ["dmg"],
+    "artifactName": "${productName}-Mac-${version}-Installer.${ext}",
+  },
+  "win": {
+    // "icon": "public/icons/win/icon.ico",
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"],
+      },
+    ],
+    "artifactName": "${productName}-Windows-${version}-Setup.${ext}",
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": true,
+    "runAfterFinish": true,
+    "allowToChangeInstallationDirectory": true,
+    "deleteAppDataOnUninstall": false,
+    "include": "./build/installer.nsh",
+  },
+  "linux": {
+    // "icon": "public/icons/png/64x64.png",
+    "target": ["AppImage"],
+    "artifactName": "${productName}-Linux-${version}.${ext}",
+  },
+}

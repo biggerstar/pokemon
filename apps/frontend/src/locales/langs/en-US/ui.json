@@ -1,0 +1,89 @@
+{
+  "validation": {
+    "minLength": "{field} must be at least {length} characters",
+    "maxLength": "{field} can only input {length} characters",
+    "min": "{field} must be at least {length}",
+    "max": "{field} can only input {length}",
+    "required": "{field} is required"
+  },
+  "actionMessage": {
+    "success": "operation success",
+    "createSuccess": "{field} create success",
+    "saveSuccess": "{field} save success",
+    "deleteSuccess": "{field} delete success",
+    "refreshSuccess": "{field} refresh success",
+    "updateSuccess": "{field} update success",
+    "error": "{field} error",
+    "saveError": "{field} save error",
+    "deleteError": "{field} delete error",
+    "refreshError": "{field} refresh error",
+    "updateError": "{field} update error",
+    "warning": "{field} warning",
+    "confirm": "{field} confirm",
+    "cancel": "{field} cancel",
+    "close": "{field} close",
+    "deleting": "{field} deleting...",
+    "deletingSuccess": "{field} deleting success",
+    "deletingError": "{field} deleting error",
+    "deletingWarning": "{field} deleting warning",
+    "deletingConfirm": "{field} deleting confirm",
+    "deletingCancel": "{field} deleting cancel",
+    "editing": "{field} editing...",
+    "editingSuccess": "{field} editing success",
+    "editingError": "{field} editing error",
+    "editingWarning": "{field} editing warning",
+    "editingConfirm": "{field} editing confirm",
+    "editingCancel": "{field} editing cancel"
+  },
+  "actionTitle": {
+    "refresh": "refresh",
+    "create": "create",
+    "save": "save",
+    "delete": "delete",
+    "update": "update",
+    "edit": "edit"
+  },
+  "interaction": {
+    "moveMenuError": "{field} cannot move menu to itself"
+  },
+  "formRules": {
+    "startWith": "{field} must start with {value}",
+    "minLength": "{field} must be at least {length} characters",
+    "maxLength": "{field} can only input {length} characters",
+    "min": "{field} must be at least {length}",
+    "max": "{field} can only input {length}",
+    "required": "{field} is required",
+    "invalidURL": "{field} is not a valid URL",
+    "alreadyExists": "{field} already exists"
+  },
+  "form": {
+    "disabled": "Disabled {field}",
+    "enabled": "Enabled {field}",
+    "delete": "Delete {field}",
+    "create": "Create {field}",
+    "update": "Update {field}",
+    "cancel": "Cancel {field}",
+    "confirm": "Confirm {field}",
+    "close": "Close {field}",
+    "reset": "Reset {field}",
+    "save": "Save {field}",
+    "edit": "Edit {field}",
+    "search": "Search {field}",
+    "clear": "Clear {field}",
+    "add": "Add {field}",
+    "remove": "Remove {field}",
+    "query": "Query {field}",
+    "config": "Config {field}",
+    "select": "Select {field}"
+  },
+  "table": {
+    "id": "ID",
+    "name": "Name",
+    "remark": "Remark",
+    "status": "Status",
+    "createTime": "Create Time",
+    "updateTime": "Update Time",
+    "key": "Key",
+    "value": "Value"
+  }
+}

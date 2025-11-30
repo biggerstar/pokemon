@@ -1,0 +1,46 @@
+{
+  "name": "@marketing/frontend",
+  "private": true,
+  "version": "0.0.1",
+  "main": "package.json",
+  "description": "",
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm vite --mode development ",
+    "build": "pnpm vite build --mode production",
+    "build:dev": "pnpm vite build --mode development",
+    "build:analyze": "pnpm vite build --mode analyze",
+    "format": "prettier --write .",
+    "lint": "eslint . --ext .js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts,.vue --fix",
+    "typecheck": "tsc --noEmit -p tsconfig.json --composite false"
+  },
+  "imports": {
+    "#/*": "./src/*"
+  },
+  "dependencies": {
+    "@tanstack/vue-query": "catalog:",
+    "@vben/access": "workspace:*",
+    "@vben/common-ui": "workspace:*",
+    "@vben/constants": "workspace:*",
+    "@vben/hooks": "workspace:*",
+    "@vben/icons": "workspace:*",
+    "@vben/layouts": "workspace:*",
+    "@vben/locales": "workspace:*",
+    "@vben/plugins": "workspace:*",
+    "@vben/preferences": "workspace:*",
+    "@vben/request": "workspace:*",
+    "@vben/stores": "workspace:*",
+    "@vben/styles": "workspace:*",
+    "@vben/types": "workspace:*",
+    "@vben/utils": "workspace:*",
+    "@vueuse/core": "catalog:",
+    "ant-design-vue": "catalog:",
+    "dayjs": "catalog:",
+    "is-electron": "^2.2.2",
+    "jszip": "^3.10.1",
+    "pinia": "catalog:",
+    "vue": "catalog:",
+    "vue-router": "catalog:",
+    "vxe-table": "^4.11.0"
+  }
+}

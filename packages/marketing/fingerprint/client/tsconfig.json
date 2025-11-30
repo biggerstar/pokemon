@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "@vben/tsconfig/web.json",
+  "compilerOptions": {
+    "target": "ESNext",
+    "types": ["@marketing/fingerprint-server"],
+    "moduleResolution": "Bundler"
+  },
+  "include": ["src", "preload"],
+  "exclude": ["node_modules"]
+}

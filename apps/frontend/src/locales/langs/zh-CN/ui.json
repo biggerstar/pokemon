@@ -1,0 +1,82 @@
+{
+  "actionMessage": {
+    "success": "操作成功",
+    "createSuccess": "{field}创建成功",
+    "saveSuccess": "{field}保存成功",
+    "deleteSuccess": "{field}删除成功",
+    "refreshSuccess": "{field}刷新成功",
+    "updateSuccess": "{field}更新成功",
+    "error": "{field}操作失败",
+    "saveError": "{field}保存失败",
+    "deleteError": "{field}删除失败",
+    "refreshError": "{field}刷新失败",
+    "updateError": "{field}更新失败",
+    "warning": "{field}操作警告",
+    "confirm": "{field}确认操作",
+    "cancel": "{field}取消操作",
+    "close": "{field}关闭操作",
+    "deleting": "{field}删除中...",
+    "deletingSuccess": "{field}删除成功",
+    "deletingError": "{field}删除失败",
+    "deletingWarning": "{field}删除警告",
+    "deletingConfirm": "{field}删除确认",
+    "deletingCancel": "{field}删除取消",
+    "editing": "{field}编辑中...",
+    "editingSuccess": "{field}编辑成功",
+    "editingError": "{field}编辑失败",
+    "editingWarning": "{field}编辑警告",
+    "editingConfirm": "{field}编辑确认",
+    "editingCancel": "{field}编辑取消"
+  },
+  "actionTitle": {
+    "refresh": "刷新",
+    "create": "创建",
+    "save": "保存",
+    "delete": "删除",
+    "update": "更新",
+    "edit": "编辑"
+  },
+  "interaction": {
+    "moveMenuError": "不能将菜单移动到自身"
+  },
+  "formRules": {
+    "invalidURL": "{field}不是有效的URL",
+    "alreadyExists": "{field}已存在",
+    "minLength": "{field}至少需要{length}个字符",
+    "maxLength": "{field}最多只能输入{length}个字符",
+    "min": "{field}至少需要{length}",
+    "max": "{field}最多只能输入{length}",
+    "required": "{field}是必填项",
+    "startWith": "{field}必须以{value}开头"
+  },
+  "form": {
+    "disabled": "禁用{field}",
+    "enabled": "启用{field}",
+    "delete": "删除{field}",
+    "create": "创建{field}",
+    "update": "更新{field}",
+    "cancel": "取消{field}",
+    "confirm": "确认{field}",
+    "close": "关闭{field}",
+    "reset": "重置{field}",
+    "save": "保存{field}",
+    "edit": "编辑{field}",
+    "search": "搜索{field}",
+    "clear": "清除{field}",
+    "add": "新增{field}",
+    "remove": "删除{field}",
+    "query": "查询{field}",
+    "config": "配置{field}",
+    "select": "选择{field}"
+  },
+  "table": {
+    "id": "ID",
+    "name": "名称",
+    "remark": "备注",
+    "status": "状态",
+    "createTime": "创建时间",
+    "updateTime": "更新时间",
+    "key": "键",
+    "value": "值"
+  }
+}
