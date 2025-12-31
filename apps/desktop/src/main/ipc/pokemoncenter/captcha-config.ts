@@ -7,14 +7,14 @@ interface CaptchaConfig {
   capmonsterToken: string;
   twoCaptchaToken: string;
   defaultService: 'capmonster' | '2captcha';
-  enableDevTools: boolean;
+  developmentMode: boolean;
 }
 
 const CONFIG_KEYS = {
   CAPMONSTER_TOKEN: 'captcha_capmonster_token',
   TWO_CAPTCHA_TOKEN: 'captcha_2captcha_token',
   DEFAULT_SERVICE: 'captcha_default_service',
-  ENABLE_DEV_TOOLS: 'enable_dev_tools',
+  DEVELOPMENT_MODE: 'development_mode',
 } as const;
 
 export async function getConfigValue(key: string): Promise<string> {
@@ -47,13 +47,13 @@ export function registerCaptchaConfigHandlers(ipcMain: typeof import('electron')
     const twoCaptchaToken = await getConfigValue(CONFIG_KEYS.TWO_CAPTCHA_TOKEN);
     const defaultServiceValue = await getConfigValue(CONFIG_KEYS.DEFAULT_SERVICE);
     const defaultService: 'capmonster' | '2captcha' = (defaultServiceValue === 'capmonster' || defaultServiceValue === '2captcha') ? defaultServiceValue : 'capmonster';
-    const enableDevTools = (await getConfigValue(CONFIG_KEYS.ENABLE_DEV_TOOLS)) === 'true';
+    const developmentMode = (await getConfigValue(CONFIG_KEYS.DEVELOPMENT_MODE)) === 'true';
 
     return {
       capmonsterToken,
       twoCaptchaToken,
       defaultService,
-      enableDevTools,
+      developmentMode,
     };
   });
 
@@ -65,14 +65,22 @@ export function registerCaptchaConfigHandlers(ipcMain: typeof import('electron')
     capmonsterToken: string,
     twoCaptchaToken: string,
     defaultService: 'capmonster' | '2captcha',
-    enableDevTools: boolean
+    developmentMode: boolean
   ) => {
     await setConfigValue(CONFIG_KEYS.CAPMONSTER_TOKEN, capmonsterToken);
     await setConfigValue(CONFIG_KEYS.TWO_CAPTCHA_TOKEN, twoCaptchaToken);
     await setConfigValue(CONFIG_KEYS.DEFAULT_SERVICE, defaultService);
-    await setConfigValue(CONFIG_KEYS.ENABLE_DEV_TOOLS, enableDevTools ? 'true' : 'false');
+    await setConfigValue(CONFIG_KEYS.DEVELOPMENT_MODE, developmentMode ? 'true' : 'false');
 
     return { success: true };
+  });
+
+  /**
+   * 获取开发模式配置（供其他模块使用）
+   */
+  ipcMain.handle('get-development-mode', async (): Promise<boolean> => {
+    const developmentMode = (await getConfigValue(CONFIG_KEYS.DEVELOPMENT_MODE)) === 'true';
+    return developmentMode;
   });
 }
 

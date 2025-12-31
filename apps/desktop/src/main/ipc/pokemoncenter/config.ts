@@ -3,10 +3,10 @@ export const POKEMONCENTER_RECAPTCHA_WEBSITE_KEY = '6Le9HlYqAAAAAJQtQcq3V_tdd73t
 
 // 邮件验证码配置
 export const POKEMONCENTER_EMAIL = 'info@pokemoncenter-online.com';
-export const EMAIL_SEARCH_WINDOW_MS = 120 * 1000; // 120秒（2分钟）
+export const EMAIL_SEARCH_WINDOW_MS = 5 * 60 * 1000; // 5分钟（300秒）
 export const POLL_INTERVAL_MS = 5 * 1000; // 5秒
-export const MAX_POLL_ATTEMPTS = 24; // 24次（2分钟 = 120秒 / 5秒 = 24次）
-export const TOTAL_TIMEOUT_MS = MAX_POLL_ATTEMPTS * POLL_INTERVAL_MS; // 120秒
+export const MAX_POLL_ATTEMPTS = 60; // 60次（5分钟 = 300秒 / 5秒 = 60次）
+export const TOTAL_TIMEOUT_MS = MAX_POLL_ATTEMPTS * POLL_INTERVAL_MS; // 300秒（5分钟）
 
 // 验证码黑名单 - 这些验证码会被忽略
 export const CODE_BLACKLIST = new Set([

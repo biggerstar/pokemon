@@ -32,7 +32,7 @@ declare global {
     updateTaskStatus(mail: string, status: 'NONE' | 'PROCESSING' | 'DONE'): Promise<any>
     resetProcessingTasks(): Promise<{ success: boolean; count: number }>
     initAllTasks(): Promise<{ success: boolean; count: number }>
-    startTasks(accountMails: string[], maxConcurrency?: number, show?: boolean, enableProxy?: boolean, clearBrowserData?: boolean, maxRetryCount?: number, addToCartTiming?: 'beforeLogin' | 'afterLogin'): Promise<{ success: boolean; message: string; taskCount?: number; maxConcurrency?: number }>
+    startTasks(accountMails: string[], maxConcurrency?: number, show?: boolean, enableProxy?: boolean, clearBrowserData?: boolean, maxRetryCount?: number, addToCartTiming?: 'beforeLogin' | 'afterLogin', captchaService?: 'capmonster' | '2captcha'): Promise<{ success: boolean; message: string; taskCount?: number; maxConcurrency?: number }>
     stopTasks(): Promise<{ success: boolean; message: string }>
     stopSelectedTasks(accountMails: string[]): Promise<{ success: boolean; message: string }>
     getTaskQueueStatus(): Promise<{ queueLength: number; runningCount: number; maxConcurrency: number; isProcessing: boolean }>
@@ -51,8 +51,9 @@ declare global {
     checkProxyStatus(proxy: string): Promise<{ success: boolean; latency?: number; error?: string }>
     checkProxiesStatus(proxyIds?: string[]): Promise<Array<{ id: string; proxy: string; success: boolean; latency?: number; error?: string }>>
     // 打码平台配置相关 API
-    getCaptchaConfig(): Promise<{ capmonsterToken: string; twoCaptchaToken: string; defaultService: 'capmonster' | '2captcha'; enableDevTools: boolean }>
-    saveCaptchaConfig(capmonsterToken: string, twoCaptchaToken: string, defaultService: 'capmonster' | '2captcha', enableDevTools: boolean): Promise<{ success: boolean }>
+    getCaptchaConfig(): Promise<{ capmonsterToken: string; twoCaptchaToken: string; defaultService: 'capmonster' | '2captcha'; developmentMode: boolean }>
+    saveCaptchaConfig(capmonsterToken: string, twoCaptchaToken: string, defaultService: 'capmonster' | '2captcha', developmentMode: boolean): Promise<{ success: boolean }>
+    getDevelopmentMode(): Promise<boolean>
   }
 
   interface Window {

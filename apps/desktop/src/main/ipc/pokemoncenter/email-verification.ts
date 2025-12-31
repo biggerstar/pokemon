@@ -97,7 +97,7 @@ function extractVerificationCode(emailContent: string): string | null {
  * @param from 邮件发送者
  * @param sentDate 邮件发送时间
  * @param now 当前时间
- * @param startTime 开始查询的时间戳，只有在此时间之后收到的邮件才算有效
+ * @param startTime 开始查询的时间戳（UTC 毫秒），只有在此时间之后发送的邮件才算有效
  */
 function isValidEmail(
   from: string | undefined,
@@ -115,21 +115,39 @@ function isValidEmail(
     return false;
   }
 
+  // 使用 getTime() 获取 UTC 时间戳（毫秒），这是时区无关的
+  // 这样可以确保在全球任意时区运行时都能正确比较时间
   const sentTimestamp = sentDate.getTime();
+  const nowTimestamp = now.getTime();
   
-  // 关键验证：邮件的发送时间必须 >= startTime（在开始查询之后发送的邮件才算有效）
+  // 关键验证：邮件的发送时间必须 >= startTime（不允许使用旧邮件）
+  // 使用时间戳比较，完全时区无关
+  // 这是最重要的验证：确保不会使用在开始查询之前发送的旧邮件
   if (sentTimestamp < startTime) {
+    const sentDateISO = sentDate.toISOString();
+    const startTimeISO = new Date(startTime).toISOString();
+    const timeDiff = Math.round((startTime - sentTimestamp) / 1000);
     console.log(
-      `[IMAP] 邮件发送时间 ${sentDate.toISOString()} 早于开始查询时间 ${new Date(startTime).toISOString()}，忽略此邮件`
+      `[IMAP] 拒绝旧邮件：邮件发送时间 ${sentDateISO} (UTC) 早于开始查询时间 ${startTimeISO} (UTC)，时间差: ${timeDiff}秒`
     );
     return false;
   }
 
-  // 验证邮件年龄：必须在查询窗口内（从发送时间到现在不超过 EMAIL_SEARCH_WINDOW_MS）
-  const emailAge = now.getTime() - sentTimestamp;
-  if (emailAge < 0 || emailAge > EMAIL_SEARCH_WINDOW_MS) {
-    return false;
+  // 验证邮件发送时间是否在未来（可能是服务器时间不同步）
+  // 如果发送时间在未来，允许但记录警告
+  const emailAge = nowTimestamp - sentTimestamp;
+  if (emailAge < 0) {
+    const futureDiff = Math.round(Math.abs(emailAge) / 1000);
+    console.log(
+      `[IMAP] 警告：邮件发送时间 ${sentDate.toISOString()} 在未来 ${futureDiff}秒，可能是服务器时间不同步，但仍接受此邮件`
+    );
   }
+
+  // 注意：不需要检查邮件年龄是否超过 EMAIL_SEARCH_WINDOW_MS
+  // 因为：
+  // 1. IMAP 搜索已经过滤了接收时间（只搜索最近 5 分钟内接收的邮件）
+  // 2. 发送时间 >= startTime 的验证已经确保了不是旧邮件
+  // 3. 如果 startTime 是最近的时间，那么发送时间也应该是最近的
 
   return true;
 }
@@ -157,24 +175,26 @@ async function fetchVerificationCodeWithClient(
     const now = new Date();
     const nowTimestamp = now.getTime();
     
-    // 计算搜索窗口的起始时间：取 startTime 和 (now - EMAIL_SEARCH_WINDOW_MS) 中的较大值
-    // 这样可以确保：
-    // 1. 不会搜索 startTime 之前的邮件
-    // 2. 不会搜索超过查询窗口的旧邮件
-    const searchWindowStart = Math.max(startTime, nowTimestamp - EMAIL_SEARCH_WINDOW_MS);
+    // 搜索窗口：从当前时间往前推 5 分钟
+    // 重要：只搜索最近 5 分钟内接收到的邮件，但验证时会确保邮件的发送时间 >= startTime（不允许使用旧邮件）
+    const searchWindowStart = nowTimestamp - EMAIL_SEARCH_WINDOW_MS;
     const timeWindowStart = new Date(searchWindowStart);
 
     console.log('[IMAP] 邮件查询参数:');
-    console.log('[IMAP]   StartTime (开始查询时间):', new Date(startTime).toISOString());
-    console.log('[IMAP]   Current time (当前时间):', now.toISOString());
-    console.log('[IMAP]   Search window start (搜索窗口起始):', timeWindowStart.toISOString());
+    console.log('[IMAP]   StartTime (开始查询时间 UTC):', new Date(startTime).toISOString());
+    console.log('[IMAP]   Current time (当前时间 UTC):', now.toISOString());
+    console.log('[IMAP]   Search window start (搜索窗口起始，从当前时间往前推5分钟):', timeWindowStart.toISOString());
     console.log(
       `[IMAP]   Search window: last ${EMAIL_SEARCH_WINDOW_MS / 1000} seconds (received time)`
     );
+    console.log('[IMAP]   注意：只接受发送时间 >= startTime 的邮件（不允许使用旧邮件）');
 
     // 使用 IMAP SEARCH 命令搜索指定时间范围内的邮件
-    // 注意：IMAP的since是基于邮件的接收时间（internaldate），而不是发送时间
-    // 但我们需要在后续验证中检查发送时间（sentDate）是否 >= startTime
+    // 注意：
+    // 1. IMAP的since是基于邮件的接收时间（internaldate），而不是发送时间
+    // 2. 我们只搜索最近 5 分钟内接收到的邮件
+    // 3. 在后续验证中，我们会使用邮件的发送时间（sentDate）进行精确的时间戳比较（时区无关）
+    // 4. 确保邮件的发送时间 >= startTime，不允许使用旧邮件
     const uids = await client.search({ since: timeWindowStart }, { uid: true });
     console.log('[IMAP] Found UIDs (before filtering):', uids);
 
@@ -216,18 +236,25 @@ async function fetchVerificationCodeWithClient(
         console.log('[IMAP]   Sent Date:', sentDate?.toISOString() || 'unknown');
 
         // 验证邮件是否符合要求（包括发送时间 >= startTime）
+        // 注意：isValidEmail 内部使用 UTC 时间戳进行比较，完全时区无关
         if (!isValidEmail(from, sentDate, now, startTime)) {
           const emailAge = sentDate
             ? Math.round((nowTimestamp - sentDate.getTime()) / 1000)
             : 'unknown';
+          const sentTimestamp = sentDate ? sentDate.getTime() : null;
+          const timeDiff = sentTimestamp && sentTimestamp < startTime
+            ? Math.round((startTime - sentTimestamp) / 1000)
+            : null;
           console.log(
-            `[IMAP]   Email validation failed. From: ${from}, Age: ${emailAge}s, Sent: ${sentDate?.toISOString() || 'unknown'}`
+            `[IMAP]   Email validation failed. From: ${from}, Age: ${emailAge}s, Sent: ${sentDate?.toISOString() || 'unknown'} (UTC)${timeDiff ? `, 早于开始时间 ${timeDiff}秒` : ''}`
           );
           continue; // 继续检查下一个邮件
         }
 
+        const sentTimestamp = sentDate.getTime();
+        const timeDiff = Math.round((sentTimestamp - startTime) / 1000);
         console.log(
-          `[IMAP]   Email passed all validations (sent after ${new Date(startTime).toISOString()}, from Pokemon Center)`
+          `[IMAP]   Email passed all validations (sent ${timeDiff}秒 after ${new Date(startTime).toISOString()} (UTC), from Pokemon Center)`
         );
         console.log('[IMAP]   Now fetching email body...');
 

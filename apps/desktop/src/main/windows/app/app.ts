@@ -1,5 +1,6 @@
 import { BaseHashRouterBrowserWindow } from "@/main/interface";
 import { BaseApplication } from "@/main/windows/app/base-application";
+import { screen } from "electron";
 import os from 'node:os';
 import process from "node:process";
 
@@ -9,14 +10,38 @@ export class MainWindow extends BaseApplication<BaseHashRouterBrowserWindow> {
   private loadingWindow: BaseHashRouterBrowserWindow | null = null;
   public DEFAULT_MAIN_WINDOW_WIDTH = 1600;
   public DEFAULT_MAIN_WINDOW_HEIGHT = 900;
+  private readonly MIN_WINDOW_WIDTH = 800;
+  private readonly MIN_WINDOW_HEIGHT = 600;
   private __nextResetDefaultWindowSize = true;
 
+  /**
+   * 根据屏幕尺寸计算窗口大小
+   * 宽度占用屏幕的 80%，高度占用屏幕的 75%
+   */
+  private calculateWindowSize(): { width: number; height: number } {
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
+    
+    const calculatedWidth = Math.floor(screenWidth * 0.8);
+    const calculatedHeight = Math.floor(screenHeight * 0.75);
+    
+    // 确保计算出的尺寸不小于最小尺寸
+    const width = Math.max(calculatedWidth, this.MIN_WINDOW_WIDTH);
+    const height = Math.max(calculatedHeight, this.MIN_WINDOW_HEIGHT);
+    
+    return { width, height };
+  }
+
   public async createMainWindow() {
+    const { width, height } = this.calculateWindowSize();
+    
     this.win = new BaseHashRouterBrowserWindow({
       title: 'Main Window',
       frame: false,
-      width: this.DEFAULT_MAIN_WINDOW_WIDTH,
-      height: this.DEFAULT_MAIN_WINDOW_HEIGHT,
+      width,
+      height,
+      minWidth: this.MIN_WINDOW_WIDTH,
+      minHeight: this.MIN_WINDOW_HEIGHT,
       titleBarStyle: 'hidden',
       titleBarOverlay: true,
       show: false,
@@ -53,8 +78,9 @@ export class MainWindow extends BaseApplication<BaseHashRouterBrowserWindow> {
     if (!this.win) return;
 
     if (this.__nextResetDefaultWindowSize) {
-      this.win.setMinimumSize(this.DEFAULT_MAIN_WINDOW_WIDTH, this.DEFAULT_MAIN_WINDOW_HEIGHT);
-      this.win.setSize(this.DEFAULT_MAIN_WINDOW_WIDTH, this.DEFAULT_MAIN_WINDOW_HEIGHT);
+      const { width, height } = this.calculateWindowSize();
+      this.win.setMinimumSize(this.MIN_WINDOW_WIDTH, this.MIN_WINDOW_HEIGHT);
+      this.win.setSize(width, height);
       this.win.setResizable(true);
       this.win.setMaximizable(true);
       this.win.center();

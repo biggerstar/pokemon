@@ -80,7 +80,7 @@ const captchaConfigModalVisible = ref(false);
 const capmonsterToken = ref('');
 const twoCaptchaToken = ref('');
 const defaultCaptchaService = ref<'capmonster' | '2captcha'>('capmonster');
-const enableDevTools = ref(false);
+const developmentMode = ref(false);
 // const showWindow = ref(false);
 // const enableProxy = ref(true);
 const showWindow = ref(true);
@@ -440,7 +440,7 @@ async function handleStartTasks() {
     // 将任务重新添加到主进程队列
     // 主进程会从数据库查询这些账号，筛选出 status === NONE 的账号（包括刚才重置的账号）
     // 然后通过 taskQueue.addTasks() 添加到队列中
-    const result = await __API__.startTasks(accountsToStart, maxConcurrency.value, showWindow.value, enableProxy.value, clearBrowserData.value, maxRetryCount.value, addToCartTiming.value);
+    const result = await __API__.startTasks(accountsToStart, maxConcurrency.value, showWindow.value, enableProxy.value, clearBrowserData.value, maxRetryCount.value, addToCartTiming.value, defaultCaptchaService.value);
     if (result.success) {
       const messageText = retryCount > 0
         ? `${result.message}（其中 ${retryCount} 个账号为重试）`
@@ -902,7 +902,7 @@ async function fetchCaptchaConfig() {
     capmonsterToken.value = config.capmonsterToken || '';
     twoCaptchaToken.value = config.twoCaptchaToken || '';
     defaultCaptchaService.value = config.defaultService || 'capmonster';
-    enableDevTools.value = config.enableDevTools ?? false;
+    developmentMode.value = config.developmentMode ?? false;
   } catch (error: any) {
     console.error('获取软件配置失败:', error);
     message.error('获取软件配置失败: ' + error.message);
@@ -920,7 +920,7 @@ async function handleSaveCaptchaConfig() {
       capmonsterToken.value.trim(),
       twoCaptchaToken.value.trim(),
       defaultCaptchaService.value,
-      enableDevTools.value
+      developmentMode.value
     );
     message.success('软件配置保存成功');
     captchaConfigModalVisible.value = false;
@@ -1136,10 +1136,10 @@ function openCaptchaConfigModal() {
         </div>
         <div class="mb-4">
           <label class="block mb-2">
-            <input type="checkbox" v-model="enableDevTools" class="mr-2" />
-            打开开发者工具
+            <input type="checkbox" v-model="developmentMode" class="mr-2" />
+            开发模式
           </label>
-          <p class="text-xs text-gray-500 mt-1">启用后，所有任务窗口将自动打开开发者工具</p>
+          <p class="text-xs text-gray-500 mt-1">启用后，所有任务窗口将自动打开开发者工具，且不会进行实际下单操作</p>
         </div>
         <p class="text-xs text-gray-500">
           说明：所有任务将使用上面选择的默认打码平台。请确保已配置对应平台的 Token。

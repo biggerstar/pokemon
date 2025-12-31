@@ -23,7 +23,8 @@ export function registerTaskQueueHandlers(ipcMain: typeof import('electron').ipc
       enableProxy: boolean = true,
       clearBrowserData: boolean = false,
       maxRetryCount: number = 3,
-      addToCartTiming?: 'beforeLogin' | 'afterLogin'
+      addToCartTiming?: 'beforeLogin' | 'afterLogin',
+      captchaService?: 'capmonster' | '2captcha'
     ) => {
       await ensureDataSourceReady();
 
@@ -36,24 +37,22 @@ export function registerTaskQueueHandlers(ipcMain: typeof import('electron').ipc
         return { success: false, message: '添加购物车时机参数无效，请在前端正确配置' };
       }
 
-      // 检查打码平台配置
-      const defaultService = (await getConfigValue(CONFIG_KEYS.DEFAULT_SERVICE)) as 'capmonster' | '2captcha' || 'capmonster';
+      // 验证验证码服务参数
+      if (!captchaService || (captchaService !== 'capmonster' && captchaService !== '2captcha')) {
+        return { success: false, message: '验证码平台参数无效，请在前端正确配置' };
+      }
+
+      // 检查对应验证码平台的 token 是否配置
       const capmonsterToken = await getConfigValue(CONFIG_KEYS.CAPMONSTER_TOKEN);
       const twoCaptchaToken = await getConfigValue(CONFIG_KEYS.TWO_CAPTCHA_TOKEN);
 
-      // 根据默认服务检查对应的 token 是否配置
-      if (defaultService === 'capmonster') {
+      if (captchaService === 'capmonster') {
         if (!capmonsterToken || capmonsterToken.trim() === '') {
           return { success: false, message: 'CapMonster Token 未配置，请在软件配置中设置后重试' };
         }
-      } else if (defaultService === '2captcha') {
+      } else if (captchaService === '2captcha') {
         if (!twoCaptchaToken || twoCaptchaToken.trim() === '') {
           return { success: false, message: '2Captcha Token 未配置，请在软件配置中设置后重试' };
-        }
-      } else {
-        // 如果默认服务未配置或配置错误，检查是否至少有一个 token
-        if ((!capmonsterToken || capmonsterToken.trim() === '') && (!twoCaptchaToken || twoCaptchaToken.trim() === '')) {
-          return { success: false, message: '打码平台 Token 未配置，请至少配置一个打码平台的 Token 后重试' };
         }
       }
 
@@ -95,11 +94,13 @@ export function registerTaskQueueHandlers(ipcMain: typeof import('electron').ipc
         // 2. 状态为 PROCESSING 但窗口已关闭的账号（允许重新启动）
         const accountsToStart: AccountEntity[] = [];
         for (const account of accounts) {
-          // 更新账号的添加购物车时机配置
+          // 更新账号的添加购物车时机配置和验证码服务配置
           if (!account.data) {
             account.data = {};
           }
           account.data.addToCartTiming = addToCartTiming;
+          // 使用前端指定的验证码服务
+          account.data.captchaService = captchaService;
           
           if (account.status === TaskStatus.NONE) {
             await repo.save(account); // 保存更新后的配置

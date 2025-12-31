@@ -34,7 +34,7 @@ export class TaskQueueManager {
   private maxConcurrency: number = 3;
   private isProcessing: boolean = false;
   private windowGrid: { cols: number; rows: number } = { cols: 3, rows: 2 };
-  private windowSize: { width: number; height: number } = { width: 1200, height: 800 };
+  private windowSize: { width: number; height: number } = { width: 480, height: 720 };
   private showWindow: boolean = false;
   private enableProxy: boolean = true;
   private clearBrowserData: boolean = false;
@@ -535,13 +535,30 @@ export class TaskQueueManager {
     const targetSession = session.fromPartition(partition);
     await resetSessionProxy(targetSession);
 
+    // 读取用户配置的开发模式设置
+    const developmentModeConfig = (await getConfigValue('development_mode')) === 'true';
+    
+    // 根据开发者工具配置决定窗口大小
+    // 如果配置中启用了开发者工具，使用当前尺寸（1200x800）
+    // 如果实际打开了开发者工具，使用手机页面尺寸
+    let windowWidth: number;
+    let windowHeight: number;
+    let minWidth: number;
+    let minHeight: number;
+    
+    // 先使用当前尺寸创建窗口（未打开开发者工具时的尺寸）
+    windowWidth = this.windowSize.width;
+    windowHeight = this.windowSize.height;
+    minWidth = 400;
+    minHeight = 600;
+
     const window = new BrowserWindow({
-      width: this.windowSize.width,
-      height: this.windowSize.height,
+      width: windowWidth,
+      height: windowHeight,
       x: position.x,
       y: position.y,
-      minWidth: 800,
-      minHeight: 600,
+      minWidth: minWidth,
+      minHeight: minHeight,
       show: false,
       webPreferences: {
         webSecurity: false,
@@ -554,11 +571,17 @@ export class TaskQueueManager {
       },
     });
 
-    // 读取用户配置的开发者工具设置
-    const enableDevToolsConfig = (await getConfigValue('enable_dev_tools')) === 'true';
     // 只有在配置允许且是开发环境时才打开开发者工具
-    if (globalEnv.isDev && enableDevToolsConfig) {
+    let devToolsOpened = false;
+    if (globalEnv.isDev && developmentModeConfig) {
       window.webContents.openDevTools({ mode: 'right' });
+      devToolsOpened = true;
+    }
+    
+    // 如果实际打开了开发者工具，调整窗口大小为手机页面尺寸
+    if (devToolsOpened) {
+      window.setSize(1200, 800);
+      window.setMinimumSize(800, 600);
     }
 
     // 获取代理信息

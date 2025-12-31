@@ -86,8 +86,8 @@ const __API__ = {
   getAllAccountsStatus() {
     return ipcRenderer.invoke('get-accounts');
   },
-  startTasks(accountIds: string[], maxConcurrency?: number, show?: boolean, enableProxy?: boolean, clearBrowserData?: boolean, maxRetryCount?: number, addToCartTiming?: 'beforeLogin' | 'afterLogin') {
-    return ipcRenderer.invoke('start-tasks', accountIds, maxConcurrency, show, enableProxy, clearBrowserData, maxRetryCount, addToCartTiming);
+  startTasks(accountIds: string[], maxConcurrency?: number, show?: boolean, enableProxy?: boolean, clearBrowserData?: boolean, maxRetryCount?: number, addToCartTiming?: 'beforeLogin' | 'afterLogin', captchaService?: 'capmonster' | '2captcha') {
+    return ipcRenderer.invoke('start-tasks', accountIds, maxConcurrency, show, enableProxy, clearBrowserData, maxRetryCount, addToCartTiming, captchaService);
   },
   clearBrowserData(accountMails?: string[]) {
     return ipcRenderer.invoke('clear-browser-data', accountMails);
@@ -139,8 +139,11 @@ const __API__ = {
   getCaptchaConfig() {
     return ipcRenderer.invoke('get-captcha-config');
   },
-  saveCaptchaConfig(capmonsterToken: string, twoCaptchaToken: string, defaultService: 'capmonster' | '2captcha', enableDevTools: boolean) {
-    return ipcRenderer.invoke('save-captcha-config', capmonsterToken, twoCaptchaToken, defaultService, enableDevTools);
+  saveCaptchaConfig(capmonsterToken: string, twoCaptchaToken: string, defaultService: 'capmonster' | '2captcha', developmentMode: boolean) {
+    return ipcRenderer.invoke('save-captcha-config', capmonsterToken, twoCaptchaToken, defaultService, developmentMode);
+  },
+  getDevelopmentMode() {
+    return ipcRenderer.invoke('get-development-mode');
   }
 }
 

@@ -1,5 +1,5 @@
 {
-  "name": "@marketing/desktop",
+  "name": "pokemon",
   "private": true,
   "version": "0.0.8",
   "main": "marketing/main/index.js",
