@@ -1,6 +1,7 @@
 packages:
   - scripts/*
   - packages/internal/*
+  # - packages/npm/*
   - packages/internal/lint-configs/*
   - packages/vben/*
   - packages/vben/@core/base/*
@@ -11,7 +12,6 @@ packages:
   - packages/vben/business/*
   - packages/marketing/fingerprint/*
   - packages/marketing/*
-  - 1688-taobao/*
   - apps/*
 
 catalog:

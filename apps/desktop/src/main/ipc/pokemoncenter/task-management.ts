@@ -1,0 +1,224 @@
+import { ipcMain } from 'electron';
+import { AccountEntity, TaskStatus } from '@/orm/entities/account';
+import { AppDataSource } from '@/orm/data-source';
+import { ensureDataSourceReady } from './utils';
+import { initializeAccountStatus } from './account-management';
+
+export function registerTaskManagementHandlers(ipcMain: typeof import('electron').ipcMain) {
+  /**
+   * 获取一个待处理的任务（status = NONE）
+   * 如果指定了 mail，则获取该账号；否则获取任意一个待处理的账号
+   * @param mail 可选的账号邮箱，如果提供则获取指定的账号
+   * @returns 账号信息或 null
+   */
+  ipcMain.handle('get-task', async (_event, mail?: string) => {
+    await ensureDataSourceReady();
+
+    // 确保账号状态已初始化
+    await initializeAccountStatus();
+
+    try {
+      // 使用事务确保原子性操作
+      return await AppDataSource.transaction(async (transactionalEntityManager) => {
+        const repo = transactionalEntityManager.getRepository(AccountEntity);
+
+        let account: AccountEntity | null = null;
+
+        if (mail) {
+          // 如果指定了 mail，获取指定的账号
+          console.log(`[get-task] 获取指定账号: ${mail}`);
+          account = await repo.findOne({
+            where: { mail: mail },
+          });
+
+          if (!account) {
+            console.error(`[get-task] 账号不存在: ${mail}`);
+            return null;
+          }
+
+          // 如果账号状态是 PROCESSING，说明正在处理中，直接返回
+          if (account.status === TaskStatus.PROCESSING) {
+            console.log(`[get-task] 账号正在处理中: ${account.mail}, status: ${account.status}`);
+            return account;
+          }
+
+          // 如果账号状态不是 NONE，不能获取
+          if (account.status !== TaskStatus.NONE) {
+            console.error(
+              `[get-task] 账号状态不是 NONE 或 PROCESSING: ${mail}, status: ${account.status}`
+            );
+            return null;
+          }
+
+          console.log(`[get-task] 获取到指定账号: ${account.mail}, status: ${account.status}`);
+        } else {
+          // 如果没有指定 mail，获取任意一个待处理的账号
+          // 先打印当前所有账号的状态（调试用）
+          const allAccounts = await repo.find({ select: ['mail', 'status'] });
+          console.log(
+            '[get-task] 当前账号状态:',
+            allAccounts.map((a) => `${a.mail}: ${a.status}`)
+          );
+
+          // 查找一个 status = NONE 的账号
+          account = await repo.findOne({
+            where: { status: TaskStatus.NONE },
+            order: { created_time: 'ASC' }, // 按创建时间排序，先进先出
+          });
+
+          if (!account) {
+            console.log('[get-task] No pending task found (status=NONE)');
+            return null;
+          }
+
+          console.log(`[get-task] Task acquired: ${account.mail}, status -> PROCESSING`);
+        }
+
+        return account;
+      });
+    } catch (error: unknown) {
+      const err = error as Error;
+      console.error('[get-task] Error:', error);
+      throw new Error(`Failed to get task: ${err.message}`);
+    }
+  });
+
+  /**
+   * 更新任务状态
+   * @param id 账号ID
+   * @param status 新状态: NONE | PROCESSING | DONE | ERROR
+   * @param statusText 状态文本描述
+   */
+  ipcMain.handle(
+    'update-task-status',
+    async (_event, mail: string, status: TaskStatus, statusText?: string) => {
+      await ensureDataSourceReady();
+
+      if (!mail) {
+        throw new Error('Account mail is required');
+      }
+
+      if (!Object.values(TaskStatus).includes(status)) {
+        throw new Error(
+          `Invalid status: ${status}. Must be one of: ${Object.values(TaskStatus).join(', ')}`
+        );
+      }
+
+      try {
+        const repo = AppDataSource.getRepository(AccountEntity);
+        const account = await repo.findOneBy({ mail });
+
+        if (!account) {
+          throw new Error(`Task not found: ${mail}`);
+        }
+
+        const oldStatus = account.status;
+        const oldStatusText = account.statusText;
+        account.status = status;
+        account.statusText = statusText || '';
+        await repo.save(account);
+
+        console.log(
+          `[update-task-status] Task ${account.mail}: ${oldStatus} -> ${status}${
+            statusText ? ` (${statusText})` : ''
+          }`
+        );
+        return {
+          success: true,
+          mail,
+          oldStatus,
+          newStatus: status,
+          oldStatusText,
+          newStatusText: statusText,
+        };
+      } catch (error: unknown) {
+        const err = error as Error;
+        console.error('[update-task-status] Error:', error);
+        throw new Error(`Failed to update task status: ${err.message}`);
+      }
+    }
+  );
+
+  /**
+   * 重置所有 PROCESSING 状态的任务为 NONE（用于异常恢复）
+   */
+  ipcMain.handle('reset-processing-tasks', async (_event) => {
+    await ensureDataSourceReady();
+
+    try {
+      const repo = AppDataSource.getRepository(AccountEntity);
+      const result = await repo.update(
+        { status: TaskStatus.PROCESSING },
+        { status: TaskStatus.NONE, statusText: '' }
+      );
+
+      console.log(`[reset-processing-tasks] Reset ${result.affected} tasks`);
+      return { success: true, count: result.affected };
+    } catch (error: unknown) {
+      const err = error as Error;
+      console.error('[reset-processing-tasks] Error:', error);
+      throw new Error(`Failed to reset tasks: ${err.message}`);
+    }
+  });
+
+  /**
+   * 初始化所有账号状态为 NONE（将所有非 PROCESSING 状态都重置）
+   * 用于手动重新开始所有任务
+   */
+  ipcMain.handle('init-all-tasks', async (_event) => {
+    await ensureDataSourceReady();
+
+    try {
+      const repo = AppDataSource.getRepository(AccountEntity);
+
+      // 将所有非 PROCESSING 的账号重置为 NONE，并清空 statusText
+      const result = await repo
+        .createQueryBuilder()
+        .update(AccountEntity)
+        .set({ status: TaskStatus.NONE, statusText: '' })
+        .where('status IS NULL OR status = :empty OR status IN (:...statuses)', {
+          empty: '',
+          statuses: [TaskStatus.NONE, TaskStatus.DONE, TaskStatus.ERROR],
+        })
+        .execute();
+
+      console.log(`[init-all-tasks] Initialized ${result.affected} tasks to NONE`);
+      return { success: true, count: result.affected };
+    } catch (error: unknown) {
+      const err = error as Error;
+      console.error('[init-all-tasks] Error:', error);
+      throw new Error(`Failed to reset tasks: ${err.message}`);
+    }
+  });
+
+  /**
+   * 重置选中账号的状态为 NONE
+   * @param accountMails 账号邮箱数组
+   */
+  ipcMain.handle('reset-accounts-status', async (_event, accountMails: string[]) => {
+    await ensureDataSourceReady();
+
+    if (!accountMails || accountMails.length === 0) {
+      throw new Error('账号邮箱数组不能为空');
+    }
+
+    try {
+      const repo = AppDataSource.getRepository(AccountEntity);
+      // 使用 In 操作符批量更新
+      const result = await repo
+        .createQueryBuilder()
+        .update(AccountEntity)
+        .set({ status: TaskStatus.NONE, statusText: '' })
+        .where('mail IN (:...mails)', { mails: accountMails })
+        .execute();
+
+      console.log(`[reset-accounts-status] 已重置 ${result.affected} 个账号的状态`);
+      return { success: true, count: result.affected || 0 };
+    } catch (error: unknown) {
+      const err = error as Error;
+      console.error('[reset-accounts-status] 重置失败:', error);
+      throw new Error(`Failed to reset accounts status: ${err.message}`);
+    }
+  });
+}
+

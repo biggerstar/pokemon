@@ -24,6 +24,33 @@ declare global {
     openBrowserWindow(url: string, show?: boolean): Promise<void>
     saveConfig(key: string, value: string): Promise<any>
     getConfig(key: string): Promise<string | null>
+    getAccounts(): Promise<any[]>
+    saveAccounts(accounts: any[]): Promise<boolean>
+    deleteAccounts(ids: string[]): Promise<boolean>
+    // 任务相关 API
+    getTask(): Promise<any | null>
+    updateTaskStatus(mail: string, status: 'NONE' | 'PROCESSING' | 'DONE'): Promise<any>
+    resetProcessingTasks(): Promise<{ success: boolean; count: number }>
+    initAllTasks(): Promise<{ success: boolean; count: number }>
+    startTasks(accountMails: string[], maxConcurrency?: number, show?: boolean, enableProxy?: boolean, clearBrowserData?: boolean, maxRetryCount?: number, addToCartTiming?: 'beforeLogin' | 'afterLogin'): Promise<{ success: boolean; message: string; taskCount?: number; maxConcurrency?: number }>
+    stopTasks(): Promise<{ success: boolean; message: string }>
+    stopSelectedTasks(accountMails: string[]): Promise<{ success: boolean; message: string }>
+    getTaskQueueStatus(): Promise<{ queueLength: number; runningCount: number; maxConcurrency: number; isProcessing: boolean }>
+    setMaxConcurrency(maxConcurrency: number): Promise<{ success: boolean; maxConcurrency: number }>
+    resetAccountsStatus(accountMails: string[]): Promise<{ success: boolean; count: number }>
+    clearBrowserData(accountMails?: string[]): Promise<{ success: boolean; message: string; clearedCount: number }>
+    updateAccountsAddToCartTiming(accountMails: string[], timing: 'beforeLogin' | 'afterLogin'): Promise<{ success: boolean; count: number }>
+    // 代理池相关 API
+    getProxyPool(): Promise<Array<{ id: string; proxy: string; name?: string; enabled: boolean; created_time: Date; updated_time: Date }>>
+    addProxyToPool(proxy: string, name?: string): Promise<{ id: string; proxy: string; name?: string; enabled: boolean; created_time: Date; updated_time: Date }>
+    addProxiesToPool(proxies: Array<{ proxy: string; name?: string }>): Promise<Array<{ id: string; proxy: string; name?: string; enabled: boolean; created_time: Date; updated_time: Date }>>
+    updateProxyInPool(id: string, proxy?: string, name?: string, enabled?: boolean): Promise<{ id: string; proxy: string; name?: string; enabled: boolean; created_time: Date; updated_time: Date }>
+    deleteProxyFromPool(id: string): Promise<{ success: boolean; deleted: number }>
+    deleteProxiesFromPool(ids: string[]): Promise<{ success: boolean; deleted: number }>
+    getRandomProxyFromPool(): Promise<{ id: string; proxy: string; name?: string; enabled: boolean; created_time: Date; updated_time: Date } | null>
+    // 打码平台配置相关 API
+    getCaptchaConfig(): Promise<{ capmonsterToken: string; twoCaptchaToken: string; defaultService: 'capmonster' | '2captcha'; enableDevTools: boolean }>
+    saveCaptchaConfig(capmonsterToken: string, twoCaptchaToken: string, defaultService: 'capmonster' | '2captcha', enableDevTools: boolean): Promise<{ success: boolean }>
   }
 
   interface Window {

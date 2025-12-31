@@ -11,7 +11,7 @@
     "dev:1688-taobao:frontend": "pnpm -F 1688-taobao-frontend run dev",
     "dev:1688-taobao:desktop": "pnpm -F 1688-taobao run dev",
     "dev:frontend": "pnpm -F @marketing/frontend run dev",
-    "dev:desktop": "pnpm -F econmerce-crawler-junpu-52 run dev",
+    "dev:desktop": "pnpm -F @marketing/desktop run dev",
     "build": "cross-env NODE_OPTIONS=--max-old-space-size=8192 turbo build --force",
     "build:web:analyze": "turbo build:analyze",
     "build:web:docker": "./scripts/deploy/build-local-docker-image.sh",

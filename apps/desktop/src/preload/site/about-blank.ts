@@ -1,21 +1,14 @@
-import { ipcRenderer } from "electron";
-
 export function useAboutBlankPage() {
   window.addEventListener("load", async () => {
     const tipContaner = document.createElement('div');
     tipContaner.style.marginTop = '50px';
 
     setInterval(async () => {
-      const launchUrl = await ipcRenderer.invoke('get-config', 'dbLaunchUrl')
-      // console.log(launchUrl)
-      
       tipContaner.innerHTML = `
         <p>使用技巧:</p>
 
         <p>1. shift + 鼠标左键点击商品可打开新窗口</p>
         <p>2. 快捷键 [ Ctrl + E ] 可以快速 打开 或 关闭 采集浏览器</p>
-
-        <a href="${launchUrl}">开云</a>
     `;
     }, 1000)
 

@@ -69,6 +69,8 @@ export function multipleViteLibLoader(options: ElectronScriptJsBuildOptions): Pl
     enforce: 'pre',
     configureServer(server) {
       if (!isWatch) return;
+      // 设置最大监听器数量，避免警告
+      server.watcher.setMaxListeners(20);
       server.watcher
         .add([
           path.join(watchDir, '*'),

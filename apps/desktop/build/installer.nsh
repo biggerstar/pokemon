@@ -1,7 +1,7 @@
 
 !macro customInit
   Delete "$INSTDIR\Uninstall*.exe"
-  StrCpy $INSTDIR "$PROGRAMFILES\econmerce-crawler-app\econmerce-crawler-junpu-52"
+  StrCpy $INSTDIR "$PROGRAMFILES\pokemon\pokemon"
 !macroend
 
 !macro customRemoveFiles

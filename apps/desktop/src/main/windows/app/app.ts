@@ -24,14 +24,14 @@ export class MainWindow extends BaseApplication<BaseHashRouterBrowserWindow> {
         sandbox: false,
         webSecurity: false,
         nodeIntegration: true,
-        contextIsolation: false, 
+        contextIsolation: false,
       },
       autoShow: true,
       preloadCjsName: 'main',
     });
     this.win.webContents.setBackgroundThrottling(false)
     // this.win.gotoHashRouter({hash: '/'}).then();
-    this.win.gotoHashRouter({ hash: '/kaiyun' }).then();
+    this.win.gotoHashRouter({ hash: '/pokemoncenter' }).then();
     // this.win.webContents.openDevTools({ mode: 'right' })
     console.log(os.arch(), process.arch);
     this.win.webContents.on('did-navigate-in-page', (_, url) => {
@@ -76,7 +76,7 @@ export class MainWindow extends BaseApplication<BaseHashRouterBrowserWindow> {
     if (!this.win) return;
 
     this.win.webContents.session.webRequest.onBeforeSendHeaders((details, callback) => {
-      delete details.requestHeaders['Referer'];
+      // delete details.requestHeaders['Referer'];
       callback({ requestHeaders: details.requestHeaders });
     });
   }

@@ -30,11 +30,11 @@ async function doDisplayWindow() {
 // 预登录处理函数
 function handlePreLogin() {
   // 调用主进程打开新窗口，默认不显示窗口
-  if (window.__API__ && window.__API__.openBrowserWindow) {
-    window.__API__.openBrowserWindow('http://www.kaiyun.com/', false);
-  } else {
-    console.error('无法调用主进程API');
-  }
+  // if (window.__API__ && window.__API__.openBrowserWindow) {
+  //   window.__API__.openBrowserWindow('http://www.kaiyun.com/', false);
+  // } else {
+  //   console.error('无法调用主进程API');
+  // }
 }
 
 setInterval(async () => {
@@ -136,11 +136,22 @@ watch(
     </template>
     <template #aside-footer>
       <div class="flex flex-col justify-center items-center mb-[10px]">
-        <ASpace direction="vertical">
+        <ASpace direction="vertical" v-if="displayWindow">
+          <AButton @click="loadURL('https://www.browserscan.net/zh/ipcheck/')" type="text">
+            IP Check
+          </AButton>
+          <AButton @click="loadURL('https://www.pokemoncenter-online.com/mypage/')" type="text">
+            <!-- <AButton @click="loadURL('https://www.google.com/')" type="text"> -->
+            <!-- <AButton @click="loadURL('https://2captcha.com/demo/recaptcha-v3?')" type="text"> -->
+            Pokemon
+          </AButton>
+        </ASpace>
+        <div class="h-[10px]"></div>
+        <!-- <ASpace direction="vertical">
           <AButton @click="doDisplayWindow" :type="displayWindow ? 'primary' : 'text'">
             {{ displayWindow ? '关 闭' : '预登录' }}
           </AButton>
-        </ASpace>
+        </ASpace> -->
         <!-- <AButton v-if="isDev" type="text" @click="handlePreLogin">
           预登录
         </AButton> -->

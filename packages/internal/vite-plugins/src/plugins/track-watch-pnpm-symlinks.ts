@@ -26,6 +26,8 @@ export function trackWatchPnpmSymlinks(): Plugin {
     name: 'track-watch-pnpm-symlinks',
     apply: 'serve',
     configureServer(server: ViteDevServer) {
+      // 设置最大监听器数量，避免警告
+      server.watcher.setMaxListeners(20);
       Object.keys(packageJson.dependencies).forEach(dep => {
         const depPath = path.resolve('node_modules', dep);
         try {
