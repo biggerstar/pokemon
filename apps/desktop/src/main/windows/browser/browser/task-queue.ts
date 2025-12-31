@@ -34,7 +34,10 @@ export class TaskQueueManager {
   private maxConcurrency: number = 3;
   private isProcessing: boolean = false;
   private windowGrid: { cols: number; rows: number } = { cols: 3, rows: 2 };
-  private windowSize: { width: number; height: number } = { width: 480, height: 720 };
+  private windowSize: { width: number; height: number } = {
+    width: 520,
+    height: 720,
+  };
   private showWindow: boolean = false;
   private enableProxy: boolean = true;
   private clearBrowserData: boolean = false;
@@ -54,7 +57,8 @@ export class TaskQueueManager {
 
   private calculateWindowGrid(): void {
     const primaryDisplay = screen.getPrimaryDisplay();
-    const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
+    const { width: screenWidth, height: screenHeight } =
+      primaryDisplay.workAreaSize;
     const maxCols = Math.floor(screenWidth / (this.windowSize.width + 20));
     const maxRows = Math.floor(screenHeight / (this.windowSize.height + 20));
     this.windowGrid = {
@@ -107,7 +111,7 @@ export class TaskQueueManager {
     this.maxRetryCount = Math.max(0, Math.min(max, 10));
     console.log(`[TaskQueue] 设置最大重试次数: ${this.maxRetryCount}`);
   }
-  
+
   public getMaxRetryCount(): number {
     return this.maxRetryCount;
   }
@@ -123,7 +127,9 @@ export class TaskQueueManager {
   private incrementRetryCount(mail: string): void {
     const current = this.getRetryCount(mail);
     this.retryCountMap.set(mail, current + 1);
-    console.log(`[TaskQueue] 账号 ${mail} 重试次数: ${current + 1}/${this.maxRetryCount}`);
+    console.log(
+      `[TaskQueue] 账号 ${mail} 重试次数: ${current + 1}/${this.maxRetryCount}`,
+    );
   }
 
   private resetRetryCount(mail: string): void {
@@ -144,34 +150,45 @@ export class TaskQueueManager {
     accountMail: string | undefined,
     shouldCountRetry: boolean,
   ): Promise<void> {
-    console.log(`[TaskQueue] 收到关闭窗口请求: ${accountMail}, shouldCountRetry: ${shouldCountRetry}`);
-    
+    console.log(
+      `[TaskQueue] 收到关闭窗口请求: ${accountMail}, shouldCountRetry: ${shouldCountRetry}`,
+    );
+
     // 如果 accountMail 为 undefined，尝试从当前 webContents 查找对应的账号
     let mail = accountMail;
     if (!mail) {
       // 尝试从 IPC 事件中获取 webContents，然后查找对应的账号
       // 注意：这里需要从 IPC 事件中获取 webContents，但当前方法没有这个参数
       // 所以我们需要另一种方式：从所有运行的任务中查找
-      console.warn(`[TaskQueue] accountMail 为 undefined，尝试从运行中的任务查找`);
+      console.warn(
+        `[TaskQueue] accountMail 为 undefined，尝试从运行中的任务查找`,
+      );
       // 如果只有一个运行中的任务，使用它
       if (this.runningTasks.size === 1) {
         mail = Array.from(this.runningTasks.keys())[0];
         console.log(`[TaskQueue] 找到唯一运行中的任务: ${mail}`);
       } else {
-        console.error(`[TaskQueue] 无法确定要关闭的窗口，当前运行的任务数: ${this.runningTasks.size}`);
+        console.error(
+          `[TaskQueue] 无法确定要关闭的窗口，当前运行的任务数: ${this.runningTasks.size}`,
+        );
         return;
       }
     }
-    
+
     const taskInfo = this.runningTasks.get(mail);
     if (!taskInfo) {
-      console.warn(`[TaskQueue] 账号 ${mail} 的窗口不存在，无法关闭。当前运行的任务:`, Array.from(this.runningTasks.keys()));
+      console.warn(
+        `[TaskQueue] 账号 ${mail} 的窗口不存在，无法关闭。当前运行的任务:`,
+        Array.from(this.runningTasks.keys()),
+      );
       return;
     }
 
     // 防止重复处理：如果窗口正在关闭中，直接返回
     if (taskInfo.isClosing) {
-      console.log(`[TaskQueue] 账号 ${mail} 的窗口正在关闭中，忽略重复的关闭请求`);
+      console.log(
+        `[TaskQueue] 账号 ${mail} 的窗口正在关闭中，忽略重复的关闭请求`,
+      );
       return;
     }
 
@@ -184,8 +201,32 @@ export class TaskQueueManager {
     // 标记窗口正在关闭中，防止重复处理
     taskInfo.isClosing = true;
 
-    // 如果应该计数重试，先检查是否已达到最大重试次数
-    if (shouldCountRetry) {
+    // 先检查当前状态，如果已经是 DONE，则不应该重试
+    let currentStatus: TaskStatus | null = null;
+    if (AppDataSource.isInitialized) {
+      try {
+        const repo = AppDataSource.getRepository(AccountEntity);
+        const currentAccount = await repo.findOne({
+          where: { mail },
+        });
+        if (currentAccount) {
+          currentStatus = currentAccount.status;
+        }
+      } catch (error) {
+        console.error(`[TaskQueue] 获取当前状态失败:`, error);
+      }
+    }
+
+    // 如果状态已经是 DONE，无论 shouldCountRetry 是什么，都不应该重试
+    if (currentStatus === TaskStatus.DONE) {
+      console.log(
+        `[TaskQueue] 账号 ${mail} 状态已经是 DONE，任务已完成，不需要重试，直接关闭窗口`,
+      );
+      // 清理重试次数缓存
+      this.resetRetryCount(mail);
+      // 直接关闭窗口，不执行重试逻辑
+    } else if (shouldCountRetry) {
+      // 如果应该计数重试，先检查是否已达到最大重试次数
       const currentRetryCount = this.getRetryCount(mail);
       // 如果已经达到最大重试次数，不再增加，直接关闭窗口
       if (currentRetryCount >= this.maxRetryCount) {
@@ -199,7 +240,7 @@ export class TaskQueueManager {
           `[TaskQueue] 账号 ${mail} 请求关闭窗口（算作重试），当前重试次数: ${retryCount}/${this.maxRetryCount}`,
         );
       }
-      
+
       // 确保状态是 ERROR（如果还没有设置）
       if (AppDataSource.isInitialized) {
         try {
@@ -208,19 +249,25 @@ export class TaskQueueManager {
             where: { mail },
           });
           if (currentAccount) {
-            const errorStatusText = currentAccount.statusText || '任务失败';
+            // 如果 statusText 为空，不更新 statusText（保持原有值或为空）
+            const errorStatusText = currentAccount.statusText;
             if (currentAccount.status !== TaskStatus.ERROR) {
+              // 只有当 statusText 有值时才传递，否则传递 undefined 表示不更新
               await this.updateAccountStatus(
                 mail,
                 TaskStatus.ERROR,
-                errorStatusText,
+                errorStatusText || undefined,
               );
-              console.log(`[TaskQueue] 已确保状态为 ERROR: ${mail}, 错误信息: ${errorStatusText}`);
+              console.log(
+                `[TaskQueue] 已确保状态为 ERROR: ${mail}, 错误信息: ${errorStatusText || '(无)'}`,
+              );
             } else {
-              console.log(`[TaskQueue] 状态已经是 ERROR: ${mail}, 错误信息: ${currentAccount.statusText}`);
+              console.log(
+                `[TaskQueue] 状态已经是 ERROR: ${mail}, 错误信息: ${currentAccount.statusText || '(无)'}`,
+              );
             }
             // 等待状态更新完成，确保数据库状态已更新
-            await new Promise(resolve => setImmediate(resolve));
+            await new Promise((resolve) => setImmediate(resolve));
           }
         } catch (error) {
           console.error(`[TaskQueue] 确保状态为 ERROR 失败:`, error);
@@ -229,8 +276,10 @@ export class TaskQueueManager {
     } else {
       // 任务成功完成，清理所有相关缓存
       this.resetRetryCount(mail);
-      console.log(`[TaskQueue] 账号 ${mail} 请求关闭窗口（任务成功），已清理重试次数缓存`);
-      
+      console.log(
+        `[TaskQueue] 账号 ${mail} 请求关闭窗口（任务成功），已清理重试次数缓存`,
+      );
+
       // 确保状态是 DONE（如果还没有设置）
       if (AppDataSource.isInitialized) {
         try {
@@ -239,36 +288,42 @@ export class TaskQueueManager {
             where: { mail },
           });
           if (currentAccount && currentAccount.status !== TaskStatus.DONE) {
+            // 如果 statusText 为空，不更新 statusText（保持原有值或为空）
+            // 只有当 statusText 有值时才传递，否则传递 undefined 表示不更新
             await this.updateAccountStatus(
               mail,
               TaskStatus.DONE,
-              currentAccount.statusText || '任务完成',
+              currentAccount.statusText || undefined,
             );
-            console.log(`[TaskQueue] 已确保状态为 DONE: ${mail}`);
+            console.log(`[TaskQueue] 已确保状态为 DONE: ${mail}, 状态文本: ${currentAccount.statusText || '(无)'}`);
           }
           // 等待状态更新完成，确保数据库状态已更新
-          await new Promise(resolve => setImmediate(resolve));
+          await new Promise((resolve) => setImmediate(resolve));
         } catch (error) {
           console.error(`[TaskQueue] 确保状态为 DONE 失败:`, error);
         }
       }
     }
-    
+
     // 关闭窗口（在状态更新完成后）
-    console.log(`[TaskQueue] 开始关闭窗口: ${mail}, shouldCountRetry: ${shouldCountRetry}`);
-    console.log(`[TaskQueue] 窗口状态: isDestroyed=${window.isDestroyed()}, isClosable=${window.isClosable()}`);
-    
+    console.log(
+      `[TaskQueue] 开始关闭窗口: ${mail}, shouldCountRetry: ${shouldCountRetry}`,
+    );
+    console.log(
+      `[TaskQueue] 窗口状态: isDestroyed=${window.isDestroyed()}, isClosable=${window.isClosable()}`,
+    );
+
     try {
       // 确保窗口可以关闭
       if (!window.isClosable()) {
         window.setClosable(true);
         console.log(`[TaskQueue] 已设置窗口为可关闭: ${mail}`);
       }
-      
+
       // 直接调用 close()，如果失败则使用 destroy()
       window.close();
       console.log(`[TaskQueue] 已调用 window.close()，等待窗口关闭...`);
-      
+
       // 立即检查窗口是否已关闭，如果没有则强制关闭
       setImmediate(() => {
         if (!window.isDestroyed()) {
@@ -300,31 +355,38 @@ export class TaskQueueManager {
       console.log(`[TaskQueue] 没有任务需要添加`);
       return;
     }
-    
-    const noneAccounts = accounts.filter((acc) => acc.status === TaskStatus.NONE);
+
+    const noneAccounts = accounts.filter(
+      (acc) => acc.status === TaskStatus.NONE,
+    );
     if (noneAccounts.length === 0) {
-      console.log(`[TaskQueue] 没有状态为 NONE 的任务需要添加，输入的任务状态:`, accounts.map(acc => `${acc.mail}: ${acc.status}`));
+      console.log(
+        `[TaskQueue] 没有状态为 NONE 的任务需要添加，输入的任务状态:`,
+        accounts.map((acc) => `${acc.mail}: ${acc.status}`),
+      );
       return;
     }
-    
+
     // 过滤掉已经在运行中或正在关闭的任务
     const validAccounts = noneAccounts.filter((acc) => {
       const taskInfo = this.runningTasks.get(acc.mail);
       if (taskInfo) {
         // 如果任务正在运行中或正在关闭，跳过
         if (!taskInfo.window.isDestroyed() || taskInfo.isClosing) {
-          console.log(`[TaskQueue] 跳过任务 ${acc.mail}，因为窗口正在运行中或正在关闭`);
+          console.log(
+            `[TaskQueue] 跳过任务 ${acc.mail}，因为窗口正在运行中或正在关闭`,
+          );
           return false;
         }
       }
       return true;
     });
-    
+
     if (validAccounts.length === 0) {
       console.log(`[TaskQueue] 所有任务都已运行中或正在关闭，无需添加`);
       return;
     }
-    
+
     // 对于新任务（重试次数为 0 的 NONE 状态任务），重置重试次数
     // 这样可以区分新任务和重试任务
     for (const account of validAccounts) {
@@ -334,11 +396,16 @@ export class TaskQueueManager {
         this.resetRetryCount(account.mail);
       }
     }
-    
-    console.log(`[TaskQueue] 准备添加 ${validAccounts.length} 个任务到队列:`, validAccounts.map(acc => acc.mail));
+
+    console.log(
+      `[TaskQueue] 准备添加 ${validAccounts.length} 个任务到队列:`,
+      validAccounts.map((acc) => acc.mail),
+    );
     this.taskQueue.push(...validAccounts);
-    console.log(`[TaskQueue] 已添加 ${validAccounts.length} 个任务到队列，当前队列长度: ${this.taskQueue.length}, isProcessing: ${this.isProcessing}, runningTasks: ${this.runningTasks.size}`);
-    
+    console.log(
+      `[TaskQueue] 已添加 ${validAccounts.length} 个任务到队列，当前队列长度: ${this.taskQueue.length}, isProcessing: ${this.isProcessing}, runningTasks: ${this.runningTasks.size}`,
+    );
+
     // 使用 setImmediate 确保 isProcessing 标志的检查是原子的
     setImmediate(() => {
       if (!this.isProcessing) {
@@ -357,10 +424,12 @@ export class TaskQueueManager {
       return;
     }
     this.isProcessing = true;
-    
+
     // 再次检查，防止在设置标志后又有新的任务添加
     try {
-      console.log(`[TaskQueue] 开始处理队列，当前队列长度: ${this.taskQueue.length}, 运行中任务数: ${this.runningTasks.size}`);
+      console.log(
+        `[TaskQueue] 开始处理队列，当前队列长度: ${this.taskQueue.length}, 运行中任务数: ${this.runningTasks.size}`,
+      );
       while (this.taskQueue.length > 0 || this.runningTasks.size > 0) {
         this.cleanupCompletedTasks();
         while (
@@ -371,8 +440,13 @@ export class TaskQueueManager {
           if (account) {
             // 再次检查任务是否已经在运行中或正在关闭
             const existingTask = this.runningTasks.get(account.mail);
-            if (existingTask && (!existingTask.window.isDestroyed() || existingTask.isClosing)) {
-              console.log(`[TaskQueue] 跳过任务 ${account.mail}，因为窗口正在运行中或正在关闭`);
+            if (
+              existingTask &&
+              (!existingTask.window.isDestroyed() || existingTask.isClosing)
+            ) {
+              console.log(
+                `[TaskQueue] 跳过任务 ${account.mail}，因为窗口正在运行中或正在关闭`,
+              );
               continue;
             }
             console.log(`[TaskQueue] 从队列中取出任务: ${account.mail}`);
@@ -381,7 +455,9 @@ export class TaskQueueManager {
         }
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
-      console.log(`[TaskQueue] 队列处理完成，当前队列长度: ${this.taskQueue.length}, 运行中任务数: ${this.runningTasks.size}`);
+      console.log(
+        `[TaskQueue] 队列处理完成，当前队列长度: ${this.taskQueue.length}, 运行中任务数: ${this.runningTasks.size}`,
+      );
     } finally {
       // 确保即使出错也重置标志
       this.isProcessing = false;
@@ -397,50 +473,59 @@ export class TaskQueueManager {
       this.windowToAccountMap.set(window.id, account.mail);
 
       // 设置 5 分钟超时定时器
-      const timeoutTimer = setTimeout(async () => {
-        if (globalEnv.isDev) return;
-        try {
-          // 检查窗口是否已销毁或正在关闭中
-          const currentTaskInfo = this.runningTasks.get(account.mail);
-          if (!currentTaskInfo || window.isDestroyed() || currentTaskInfo.isClosing) {
-            console.log(`[TaskQueue] 超时定时器触发，但窗口已销毁或正在关闭中: ${account.mail}`);
-            return;
-          }
-
-          // 检查任务状态
-          if (AppDataSource.isInitialized) {
-            const repo = AppDataSource.getRepository(AccountEntity);
-            const updatedAccount = await repo.findOne({
-              where: { mail: account.mail },
-            });
-
-            // 如果任务还没完成（不是 DONE 或 ERROR），则关闭窗口
+      const timeoutTimer = setTimeout(
+        async () => {
+          if (globalEnv.isDev) return;
+          try {
+            // 检查窗口是否已销毁或正在关闭中
+            const currentTaskInfo = this.runningTasks.get(account.mail);
             if (
-              updatedAccount &&
-              updatedAccount.status !== TaskStatus.DONE &&
-              updatedAccount.status !== TaskStatus.ERROR
+              !currentTaskInfo ||
+              window.isDestroyed() ||
+              currentTaskInfo.isClosing
             ) {
               console.log(
-                `[TaskQueue] 任务超时（5分钟），关闭窗口: ${account.mail}`,
+                `[TaskQueue] 超时定时器触发，但窗口已销毁或正在关闭中: ${account.mail}`,
               );
+              return;
+            }
 
-              // 更新状态为错误
-              await this.updateAccountStatus(
-                account.mail,
-                TaskStatus.ERROR,
-                '任务超时（5分钟）',
-              );
+            // 检查任务状态
+            if (AppDataSource.isInitialized) {
+              const repo = AppDataSource.getRepository(AccountEntity);
+              const updatedAccount = await repo.findOne({
+                where: { mail: account.mail },
+              });
 
-              // 关闭窗口（会触发 requestCloseWindow）
-              if (!window.isDestroyed() && !currentTaskInfo.isClosing) {
-                window.close();
+              // 如果任务还没完成（不是 DONE 或 ERROR），则关闭窗口
+              if (
+                updatedAccount &&
+                updatedAccount.status !== TaskStatus.DONE &&
+                updatedAccount.status !== TaskStatus.ERROR
+              ) {
+                console.log(
+                  `[TaskQueue] 任务超时（5分钟），关闭窗口: ${account.mail}`,
+                );
+
+                // 更新状态为错误
+                await this.updateAccountStatus(
+                  account.mail,
+                  TaskStatus.ERROR,
+                  '任务超时（5分钟）',
+                );
+
+                // 关闭窗口（会触发 requestCloseWindow）
+                if (!window.isDestroyed() && !currentTaskInfo.isClosing) {
+                  window.close();
+                }
               }
             }
+          } catch (error) {
+            console.error(`[TaskQueue] 超时处理失败:`, error);
           }
-        } catch (error) {
-          console.error(`[TaskQueue] 超时处理失败:`, error);
-        }
-      }, 5 * 60 * 1000); // 5 分钟
+        },
+        5 * 60 * 1000,
+      ); // 5 分钟
 
       const taskInfo: TaskWindowInfo = {
         window,
@@ -514,7 +599,9 @@ export class TaskQueueManager {
       }
       // 重置重试计数
       this.resetRetryCount(accountMail);
-      console.log(`[TaskQueue] 检测到窗口已关闭，已清理任务并重置重试计数: ${accountMail}`);
+      console.log(
+        `[TaskQueue] 检测到窗口已关闭，已清理任务并重置重试计数: ${accountMail}`,
+      );
     }
   }
 
@@ -536,8 +623,9 @@ export class TaskQueueManager {
     await resetSessionProxy(targetSession);
 
     // 读取用户配置的开发模式设置
-    const developmentModeConfig = (await getConfigValue('development_mode')) === 'true';
-    
+    const developmentModeConfig =
+      (await getConfigValue('development_mode')) === 'true';
+
     // 根据开发者工具配置决定窗口大小
     // 如果配置中启用了开发者工具，使用当前尺寸（1200x800）
     // 如果实际打开了开发者工具，使用手机页面尺寸
@@ -545,7 +633,7 @@ export class TaskQueueManager {
     let windowHeight: number;
     let minWidth: number;
     let minHeight: number;
-    
+
     // 先使用当前尺寸创建窗口（未打开开发者工具时的尺寸）
     windowWidth = this.windowSize.width;
     windowHeight = this.windowSize.height;
@@ -573,11 +661,11 @@ export class TaskQueueManager {
 
     // 只有在配置允许且是开发环境时才打开开发者工具
     let devToolsOpened = false;
-    if (globalEnv.isDev && developmentModeConfig) {
+    if (developmentModeConfig) {
       window.webContents.openDevTools({ mode: 'right' });
       devToolsOpened = true;
     }
-    
+
     // 如果实际打开了开发者工具，调整窗口大小为手机页面尺寸
     if (devToolsOpened) {
       window.setSize(1200, 800);
@@ -600,9 +688,13 @@ export class TaskQueueManager {
 
           if (enabledProxies.length > 0) {
             // 随机选择一个
-            const randomIndex = Math.floor(Math.random() * enabledProxies.length);
+            const randomIndex = Math.floor(
+              Math.random() * enabledProxies.length,
+            );
             proxyString = enabledProxies[randomIndex]?.proxy;
-            console.log(`[createTaskWindow] 从代理池随机选择代理: ${proxyString}`);
+            console.log(
+              `[createTaskWindow] 从代理池随机选择代理: ${proxyString}`,
+            );
           } else {
             console.warn('[createTaskWindow] 代理池中没有启用的代理');
           }
@@ -634,7 +726,9 @@ export class TaskQueueManager {
             nodeIntegration: true,
             contextIsolation: false,
             partition: partition,
-            preload: globalMainPathParser.resolvePreload('browser.cjs').toString(),
+            preload: globalMainPathParser
+              .resolvePreload('browser.cjs')
+              .toString(),
           },
         });
         const childSessionKey = `child-${sessionKey}-${childWindow.id}`;
@@ -697,28 +791,40 @@ export class TaskQueueManager {
     // 使用闭包保存 account.mail，避免依赖窗口映射
     const accountMail = account.mail;
     let chromeErrorHandled = false; // 防止重复处理
-    
+
     const handleChromeError = async (url: string, source: string) => {
       // 防止重复处理（多个事件可能同时触发）
       if (chromeErrorHandled) {
-        console.log(`[createTaskWindow] chrome-error 已处理，跳过: ${accountMail}`);
+        console.log(
+          `[createTaskWindow] chrome-error 已处理，跳过: ${accountMail}`,
+        );
         return;
       }
-      
+
       // 检查窗口是否还存在
       const currentTaskInfo = this.runningTasks.get(accountMail);
-      if (!currentTaskInfo || currentTaskInfo.window.isDestroyed() || currentTaskInfo.isClosing) {
-        console.log(`[createTaskWindow] 窗口已关闭或正在关闭，跳过 chrome-error 处理: ${accountMail}`);
+      if (
+        !currentTaskInfo ||
+        currentTaskInfo.window.isDestroyed() ||
+        currentTaskInfo.isClosing
+      ) {
+        console.log(
+          `[createTaskWindow] 窗口已关闭或正在关闭，跳过 chrome-error 处理: ${accountMail}`,
+        );
         return;
       }
-      
+
       chromeErrorHandled = true;
-      console.log(`[createTaskWindow] 检测到 chrome-error 页面 (${source}): ${url}, 账号: ${accountMail}`);
-      
+      console.log(
+        `[createTaskWindow] 检测到 chrome-error 页面 (${source}): ${url}, 账号: ${accountMail}`,
+      );
+
       // 更新任务状态为 ERROR
       try {
         const repo = AppDataSource.getRepository(AccountEntity);
-        const currentAccount = await repo.findOne({ where: { mail: accountMail } });
+        const currentAccount = await repo.findOne({
+          where: { mail: accountMail },
+        });
         if (currentAccount) {
           currentAccount.status = TaskStatus.ERROR;
           currentAccount.statusText = '网络或者代理不可用';
@@ -727,26 +833,34 @@ export class TaskQueueManager {
       } catch (error) {
         console.error(`[createTaskWindow] 更新任务状态失败:`, error);
       }
-      
+
       // 立即关闭窗口并重试
       await this.requestCloseWindow(accountMail, true);
     };
-    
+
     const navigateListener = async (_event: Electron.Event, url: string) => {
       if (url && url.includes('chrome-error://chromewebdata')) {
         await handleChromeError(url, 'did-navigate');
       }
     };
-    
-    const failLoadListener = async (_event: Electron.Event, errorCode: number, errorDescription: string, validatedURL: string) => {
-      if (validatedURL && validatedURL.includes('chrome-error://chromewebdata')) {
+
+    const failLoadListener = async (
+      _event: Electron.Event,
+      errorCode: number,
+      errorDescription: string,
+      validatedURL: string,
+    ) => {
+      if (
+        validatedURL &&
+        validatedURL.includes('chrome-error://chromewebdata')
+      ) {
         await handleChromeError(validatedURL, 'did-fail-load');
       }
     };
-    
+
     window.webContents.on('did-navigate', navigateListener);
     window.webContents.on('did-fail-load', failLoadListener);
-    
+
     // 在窗口关闭时移除监听器，防止内存泄漏
     window.once('closed', () => {
       try {
@@ -785,7 +899,7 @@ export class TaskQueueManager {
   ): void {
     let statusCheckIntervalCleared = false; // 防止重复清理
     const accountMail = account.mail;
-    
+
     const clearAllTimers = () => {
       if (!statusCheckIntervalCleared) {
         statusCheckIntervalCleared = true;
@@ -793,7 +907,7 @@ export class TaskQueueManager {
         clearTimeout(timeoutTimer);
       }
     };
-    
+
     const statusCheckInterval = setInterval(async () => {
       try {
         if (!AppDataSource.isInitialized) {
@@ -812,15 +926,20 @@ export class TaskQueueManager {
           clearAllTimers();
           return;
         }
-        if (updatedAccount.status === TaskStatus.DONE || updatedAccount.status === TaskStatus.ERROR) {
+        if (
+          updatedAccount.status === TaskStatus.DONE ||
+          updatedAccount.status === TaskStatus.ERROR
+        ) {
           // 检查窗口是否正在关闭中，避免重复调用 requestCloseWindow
           const currentTaskInfo = this.runningTasks.get(accountMail);
           if (currentTaskInfo && currentTaskInfo.isClosing) {
-            console.log(`[TaskQueue] setupTaskCompletionListener 检测到状态变化，但窗口正在关闭中，跳过: ${accountMail}`);
+            console.log(
+              `[TaskQueue] setupTaskCompletionListener 检测到状态变化，但窗口正在关闭中，跳过: ${accountMail}`,
+            );
             clearAllTimers();
             return;
           }
-          
+
           clearAllTimers();
 
           const shouldCountRetry = updatedAccount.status === TaskStatus.ERROR;
@@ -832,7 +951,9 @@ export class TaskQueueManager {
             new Notification({ title, body, silent: false }).show();
           }
 
-          console.log(`[TaskQueue] setupTaskCompletionListener 检测到 ${updatedAccount.status}，调用 requestCloseWindow: ${accountMail}`);
+          console.log(
+            `[TaskQueue] setupTaskCompletionListener 检测到 ${updatedAccount.status}，调用 requestCloseWindow: ${accountMail}`,
+          );
           await this.requestCloseWindow(accountMail, shouldCountRetry);
         }
       } catch (error) {
@@ -852,11 +973,13 @@ export class TaskQueueManager {
     window.on('closed', async () => {
       // 防止重复处理 closed 事件
       if (closedHandlerExecuted) {
-        console.warn(`[TaskQueue] 窗口关闭事件已处理，跳过重复处理: ${accountMail}`);
+        console.warn(
+          `[TaskQueue] 窗口关闭事件已处理，跳过重复处理: ${accountMail}`,
+        );
         return;
       }
       closedHandlerExecuted = true;
-      
+
       console.log(`[TaskQueue] 窗口关闭事件触发: ${accountMail}`);
 
       clearAllTimers();
@@ -896,7 +1019,9 @@ export class TaskQueueManager {
       // 防止重复处理：检查任务是否已经被处理
       const currentTaskInfo = this.runningTasks.get(account.mail);
       if (!currentTaskInfo || currentTaskInfo.window.id !== windowId) {
-        console.warn(`[TaskQueue] 窗口 ${windowId} 的任务信息已不存在或不匹配，跳过处理: ${account.mail}`);
+        console.warn(
+          `[TaskQueue] 窗口 ${windowId} 的任务信息已不存在或不匹配，跳过处理: ${account.mail}`,
+        );
         return;
       }
 
@@ -933,19 +1058,25 @@ export class TaskQueueManager {
               if (this.windowToAccountMap.has(windowId)) {
                 this.windowToAccountMap.delete(windowId);
               }
-              console.log(`[TaskQueue] 窗口关闭（任务成功），已清理所有缓存: ${account.mail}`);
+              console.log(
+                `[TaskQueue] 窗口关闭（任务成功），已清理所有缓存: ${account.mail}`,
+              );
+              // 任务已完成，不需要重试，直接返回
+              return;
             }
             // 判断是否是手动关闭：如果 isClosing 为 false 或 undefined，说明是手动关闭
             // 如果 isClosing 为 true，说明是通过 requestCloseWindow 关闭的，是程序关闭
             const isManualClose = !currentTaskInfo.isClosing;
-            
+
             if (isManualClose) {
               // 手动关闭：重置为 NONE 状态，状态文本显示"手动停止"
               updatedAccount.status = TaskStatus.NONE;
               updatedAccount.statusText = '手动停止';
               await repo.save(updatedAccount);
-              console.log(`[TaskQueue] 窗口关闭（手动关闭），已重置为 NONE 状态，状态文本: 手动停止: ${account.mail}`);
-              
+              console.log(
+                `[TaskQueue] 窗口关闭（手动关闭），已重置为 NONE 状态，状态文本: 手动停止: ${account.mail}`,
+              );
+
               // 清理重试次数缓存
               this.resetRetryCount(account.mail);
             }
@@ -956,7 +1087,9 @@ export class TaskQueueManager {
                 // 确保状态是 ERROR，以便前端显示错误信息
                 if (updatedAccount.status !== TaskStatus.ERROR) {
                   updatedAccount.status = TaskStatus.ERROR;
-                  updatedAccount.statusText = updatedAccount.statusText || '任务失败（已达到最大重试次数）';
+                  updatedAccount.statusText =
+                    updatedAccount.statusText ||
+                    '任务失败（已达到最大重试次数）';
                   await repo.save(updatedAccount);
                 }
                 console.log(
@@ -966,37 +1099,41 @@ export class TaskQueueManager {
               // 如果重试次数 < maxRetryCount，需要重试
               else {
                 // 先确保状态是 ERROR（如果还没有设置），并保留错误信息
-              const errorStatusText = updatedAccount.statusText || '任务失败';
-              if (updatedAccount.status !== TaskStatus.ERROR) {
-                updatedAccount.status = TaskStatus.ERROR;
-                updatedAccount.statusText = errorStatusText;
-                await repo.save(updatedAccount);
-                console.log(`[TaskQueue] 已确保状态为 ERROR: ${account.mail}, 错误信息: ${errorStatusText}`);
-                // 等待状态更新完成，确保前端能看到错误状态
-                await new Promise(resolve => setImmediate(resolve));
-              }
-              
-              // 为了重试，需要重置状态为 NONE（addTasks 只接受 NONE 状态的任务）
-              // 但是，在重置之前，状态已经是 ERROR，前端应该能看到错误信息
-              updatedAccount.status = TaskStatus.NONE;
-              updatedAccount.statusText = '';
-              await repo.save(updatedAccount);
-              console.log(
-                `[TaskQueue] 窗口关闭（需要重试），重试次数 ${retryCount}/${this.maxRetryCount}，已重置任务状态为 NONE: ${account.mail}`,
-              );
-              
-              // 在调用 addTasks 之前，先从 runningTasks 中删除任务
-              // 这样 addTasks 就不会因为任务还在 runningTasks 中而被过滤掉
-              const retryTaskInfo = this.runningTasks.get(account.mail);
-              if (retryTaskInfo && retryTaskInfo.window.id === windowId) {
-                // 清理超时定时器
-                if (retryTaskInfo.timeoutTimer) {
-                  clearTimeout(retryTaskInfo.timeoutTimer);
+                const errorStatusText = updatedAccount.statusText || '任务失败';
+                if (updatedAccount.status !== TaskStatus.ERROR) {
+                  updatedAccount.status = TaskStatus.ERROR;
+                  updatedAccount.statusText = errorStatusText;
+                  await repo.save(updatedAccount);
+                  console.log(
+                    `[TaskQueue] 已确保状态为 ERROR: ${account.mail}, 错误信息: ${errorStatusText}`,
+                  );
+                  // 等待状态更新完成，确保前端能看到错误状态
+                  await new Promise((resolve) => setImmediate(resolve));
                 }
-                this.runningTasks.delete(account.mail);
-                console.log(`[TaskQueue] 已从 runningTasks 中删除任务（准备重试）: ${account.mail}`);
-              }
-              
+
+                // 为了重试，需要重置状态为 NONE（addTasks 只接受 NONE 状态的任务）
+                // 但是，在重置之前，状态已经是 ERROR，前端应该能看到错误信息
+                updatedAccount.status = TaskStatus.NONE;
+                updatedAccount.statusText = '';
+                await repo.save(updatedAccount);
+                console.log(
+                  `[TaskQueue] 窗口关闭（需要重试），重试次数 ${retryCount}/${this.maxRetryCount}，已重置任务状态为 NONE: ${account.mail}`,
+                );
+
+                // 在调用 addTasks 之前，先从 runningTasks 中删除任务
+                // 这样 addTasks 就不会因为任务还在 runningTasks 中而被过滤掉
+                const retryTaskInfo = this.runningTasks.get(account.mail);
+                if (retryTaskInfo && retryTaskInfo.window.id === windowId) {
+                  // 清理超时定时器
+                  if (retryTaskInfo.timeoutTimer) {
+                    clearTimeout(retryTaskInfo.timeoutTimer);
+                  }
+                  this.runningTasks.delete(account.mail);
+                  console.log(
+                    `[TaskQueue] 已从 runningTasks 中删除任务（准备重试）: ${account.mail}`,
+                  );
+                }
+
                 shouldRetry = true;
                 this.addTasks([updatedAccount]);
               }
@@ -1016,24 +1153,30 @@ export class TaskQueueManager {
           clearTimeout(finalTaskInfo.timeoutTimer);
         }
         this.runningTasks.delete(account.mail);
-        console.log(`[TaskQueue] 已从 runningTasks 中删除任务: ${account.mail}`);
+        console.log(
+          `[TaskQueue] 已从 runningTasks 中删除任务: ${account.mail}`,
+        );
       }
-      
+
       // 从 windowToAccountMap 中删除（确保只删除一次，且映射正确）
       const mappedMail = this.windowToAccountMap.get(windowId);
       if (mappedMail === account.mail) {
         this.windowToAccountMap.delete(windowId);
-        console.log(`[TaskQueue] 已从 windowToAccountMap 中删除映射: ${windowId} -> ${account.mail}`);
+        console.log(
+          `[TaskQueue] 已从 windowToAccountMap 中删除映射: ${windowId} -> ${account.mail}`,
+        );
       }
-      
+
       this.recalculateWindowPositions();
-      
+
       // 如果任务需要重试，确保队列处理继续运行
       if (shouldRetry && !this.isProcessing && this.taskQueue.length > 0) {
         this.processQueue();
       }
-      
-      console.log(`[TaskQueue] 窗口 ${windowId} (${account.mail}) 关闭处理完成`);
+
+      console.log(
+        `[TaskQueue] 窗口 ${windowId} (${account.mail}) 关闭处理完成`,
+      );
     });
   }
 
@@ -1050,7 +1193,7 @@ export class TaskQueueManager {
   private async updateAccountStatus(
     accountMail: string,
     status: TaskStatus,
-    statusText: string,
+    statusText?: string | null,
   ): Promise<void> {
     try {
       if (!AppDataSource.isInitialized) return;
@@ -1061,7 +1204,10 @@ export class TaskQueueManager {
         const account = await repo.findOne({ where: { mail: accountMail } });
         if (account) {
           account.status = status;
-          account.statusText = statusText;
+          // 只有当 statusText 有值时才更新 statusText（不为 undefined、null 或空字符串）
+          if (statusText !== undefined && statusText !== null && statusText !== '') {
+            account.statusText = statusText;
+          }
           await repo.save(account);
         }
       });
@@ -1090,7 +1236,9 @@ export class TaskQueueManager {
         }
         // 清理重试计数（如果窗口已销毁，说明任务已结束）
         this.resetRetryCount(accountMail);
-        console.log(`[TaskQueue] cleanupCompletedTasks 清理已关闭的窗口: ${accountMail}`);
+        console.log(
+          `[TaskQueue] cleanupCompletedTasks 清理已关闭的窗口: ${accountMail}`,
+        );
       }
     }
     // 批量删除，避免在迭代过程中修改 Map
@@ -1250,9 +1398,9 @@ export class TaskQueueManager {
   public getQueueStatus() {
     // 计算实际打开的窗口数量（排除已关闭但未清理的窗口）
     const actualRunningCount = Array.from(this.runningTasks.values()).filter(
-      (taskInfo) => !taskInfo.window.isDestroyed() && !taskInfo.isClosing
+      (taskInfo) => !taskInfo.window.isDestroyed() && !taskInfo.isClosing,
     ).length;
-    
+
     return {
       queueLength: this.taskQueue.length,
       runningCount: actualRunningCount, // 使用实际打开的窗口数量
@@ -1261,5 +1409,3 @@ export class TaskQueueManager {
     };
   }
 }
-
-

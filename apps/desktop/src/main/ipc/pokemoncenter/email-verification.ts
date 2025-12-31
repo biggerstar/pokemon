@@ -3,9 +3,9 @@ import {
   POKEMONCENTER_EMAIL,
   EMAIL_SEARCH_WINDOW_MS,
   POLL_INTERVAL_MS,
-  MAX_POLL_ATTEMPTS,
   TOTAL_TIMEOUT_MS,
   CODE_BLACKLIST,
+  MAX_EMAILS_TO_CHECK,
 } from './config';
 import { normalizeEmail, resolveImapHost, findAccountByMail, sleep } from './utils';
 
@@ -23,14 +23,37 @@ function isValidCode(code: string): boolean {
 /**
  * 从邮件内容中提取验证码
  * 使用更精确的匹配模式，避免匹配到邮件ID、时间戳等无关数字
+ * 支持纯文本和HTML格式的邮件
  *
  * Pokemon Center 邮件格式：
  * ログイン用パスコードをお知らせします。パスコード入力画面に下記のコードを入力してください。
  */
 function extractVerificationCode(emailContent: string): string | null {
-  // 移除邮件头部分，只搜索邮件正文
-  const bodyStart = emailContent.indexOf('\r\n\r\n') || emailContent.indexOf('\n\n');
-  const body = bodyStart > 0 ? emailContent.substring(bodyStart) : emailContent;
+  // 如果是HTML邮件，先提取纯文本内容
+  let textContent = emailContent;
+  
+  // 尝试提取HTML邮件的文本内容
+  const htmlBodyMatch = emailContent.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  if (htmlBodyMatch) {
+    // 移除HTML标签，保留文本内容
+    textContent = htmlBodyMatch[1]
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '') // 移除script标签
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '') // 移除style标签
+      .replace(/<[^>]+>/g, ' ') // 移除所有HTML标签
+      .replace(/&nbsp;/g, ' ') // 替换&nbsp;
+      .replace(/&[a-z]+;/gi, ' ') // 替换其他HTML实体
+      .replace(/\s+/g, ' ') // 合并多个空格
+      .trim();
+    console.log('[IMAP] Extracted text from HTML email, length:', textContent.length);
+  } else {
+    // 移除邮件头部分，只搜索邮件正文
+    const bodyStart = emailContent.indexOf('\r\n\r\n') || emailContent.indexOf('\n\n');
+    textContent = bodyStart > 0 ? emailContent.substring(bodyStart) : emailContent;
+  }
+
+  // 记录邮件内容的前500个字符用于调试
+  const preview = textContent.substring(0, 500).replace(/\s+/g, ' ');
+  console.log('[IMAP] Email content preview (first 500 chars):', preview);
 
   // 尝试多种验证码模式，按优先级排序
   const patterns = [
@@ -46,10 +69,15 @@ function extractVerificationCode(emailContent: string): string | null {
     /(?:验证码|verification\s*code|code|コード)[:：\s]*(\d{6})\b/gi,
     // 您的验证码是 123456
     /(?:您的|your|あなたの)[\s\S]{0,50}?(\d{6})\b/gi,
+    // 更宽松的模式：查找所有6位连续数字（作为最后手段）
+    /\b(\d{6})\b/g,
   ];
 
   for (const pattern of patterns) {
-    for (const match of body.matchAll(pattern)) {
+    // 重置正则表达式的lastIndex
+    pattern.lastIndex = 0;
+    
+    for (const match of textContent.matchAll(pattern)) {
       // 优先使用捕获组（match[1]），如果没有则使用整个匹配
       const rawCode = match[1] || match[0];
       if (!rawCode || typeof rawCode !== 'string') continue;
@@ -61,21 +89,28 @@ function extractVerificationCode(emailContent: string): string | null {
       const code = sixDigitMatch[0];
 
       // 严格验证：必须是6位数字，且不在黑名单中
-      if (!/^\d{6}$/.test(code) || !isValidCode(code)) continue;
+      if (!/^\d{6}$/.test(code) || !isValidCode(code)) {
+        console.log(`[IMAP] Skipping code ${code} (blacklisted or invalid)`);
+        continue;
+      }
 
       // 验证这个数字不在明显的非验证码上下文中
-      const context = body.substring(
-        Math.max(0, match.index! - 30),
-        Math.min(body.length, match.index! + 30)
+      const context = textContent.substring(
+        Math.max(0, match.index! - 50),
+        Math.min(textContent.length, match.index! + 50)
       );
-      // 排除明显的时间戳、ID等
-      if (
-        /\d{4}[-\/]\d{2}[-\/]\d{2}/.test(context) || // 日期格式
-        /uid|id|message-id|message\s*id/i.test(context) || // ID相关
-        /\d{10,}/.test(context)
-      ) {
-        // 长数字串（可能是时间戳）
-        continue;
+      
+      // 排除明显的时间戳、ID等（但如果是最后一个模式，放宽检查）
+      const isLastPattern = pattern === patterns[patterns.length - 1];
+      if (!isLastPattern) {
+        if (
+          /\d{4}[-\/]\d{2}[-\/]\d{2}/.test(context) || // 日期格式
+          /uid|id|message-id|message\s*id/i.test(context) || // ID相关
+          /\d{10,}/.test(context) // 长数字串（可能是时间戳）
+        ) {
+          console.log(`[IMAP] Skipping code ${code} (appears to be in non-code context)`);
+          continue;
+        }
       }
 
       console.log(
@@ -84,11 +119,12 @@ function extractVerificationCode(emailContent: string): string | null {
         'code:',
         code
       );
-      console.log('[IMAP] Context:', context.replace(/\s+/g, ' ').substring(0, 100));
+      console.log('[IMAP] Context:', context.replace(/\s+/g, ' ').substring(0, 150));
       return code;
     }
   }
 
+  console.log('[IMAP] No verification code found in email content');
   return null;
 }
 
@@ -105,9 +141,24 @@ function isValidEmail(
   now: Date,
   startTime: number
 ): boolean {
-  // 验证发送者
-  if (!from || from.toLowerCase() !== POKEMONCENTER_EMAIL.toLowerCase()) {
+  // 验证发送者 - 放宽验证：允许包含 "pokemoncenter" 的邮件地址
+  if (!from) {
+    console.log('[IMAP] 邮件验证失败：没有发送者信息');
     return false;
+  }
+  
+  const fromLower = from.toLowerCase();
+  const expectedEmailLower = POKEMONCENTER_EMAIL.toLowerCase();
+  
+  // 允许完全匹配或包含 pokemoncenter 的邮件
+  if (fromLower !== expectedEmailLower && !fromLower.includes('pokemoncenter')) {
+    console.log(`[IMAP] 邮件验证失败：发送者 ${from} 不匹配 Pokemon Center (期望: ${POKEMONCENTER_EMAIL})`);
+    return false;
+  }
+  
+  // 如果发送者匹配，记录日志
+  if (fromLower !== expectedEmailLower) {
+    console.log(`[IMAP] 发送者匹配（宽松模式）: ${from} (期望: ${POKEMONCENTER_EMAIL})`);
   }
 
   // 验证时间
@@ -120,17 +171,26 @@ function isValidEmail(
   const sentTimestamp = sentDate.getTime();
   const nowTimestamp = now.getTime();
   
-  // 关键验证：邮件的发送时间必须 >= startTime（不允许使用旧邮件）
+  // 关键验证：邮件的发送时间应该 >= startTime（不允许使用旧邮件）
+  // 但允许一定的时间容差（30秒），以应对时间不同步的问题
   // 使用时间戳比较，完全时区无关
-  // 这是最重要的验证：确保不会使用在开始查询之前发送的旧邮件
-  if (sentTimestamp < startTime) {
+  const timeToleranceMs = 30 * 1000; // 30秒容差
+  if (sentTimestamp < startTime - timeToleranceMs) {
     const sentDateISO = sentDate.toISOString();
     const startTimeISO = new Date(startTime).toISOString();
     const timeDiff = Math.round((startTime - sentTimestamp) / 1000);
     console.log(
-      `[IMAP] 拒绝旧邮件：邮件发送时间 ${sentDateISO} (UTC) 早于开始查询时间 ${startTimeISO} (UTC)，时间差: ${timeDiff}秒`
+      `[IMAP] 拒绝旧邮件：邮件发送时间 ${sentDateISO} (UTC) 早于开始查询时间 ${startTimeISO} (UTC)，时间差: ${timeDiff}秒（超过30秒容差）`
     );
     return false;
+  }
+  
+  // 如果邮件在容差范围内（startTime 之前30秒内），记录警告但仍接受
+  if (sentTimestamp < startTime) {
+    const timeDiff = Math.round((startTime - sentTimestamp) / 1000);
+    console.log(
+      `[IMAP] ⚠️ 警告：邮件发送时间早于开始查询时间 ${timeDiff}秒，但在30秒容差内，仍接受此邮件`
+    );
   }
 
   // 验证邮件发送时间是否在未来（可能是服务器时间不同步）
@@ -143,11 +203,18 @@ function isValidEmail(
     );
   }
 
-  // 注意：不需要检查邮件年龄是否超过 EMAIL_SEARCH_WINDOW_MS
-  // 因为：
-  // 1. IMAP 搜索已经过滤了接收时间（只搜索最近 5 分钟内接收的邮件）
-  // 2. 发送时间 >= startTime 的验证已经确保了不是旧邮件
-  // 3. 如果 startTime 是最近的时间，那么发送时间也应该是最近的
+  // 额外的安全检查：如果邮件发送时间距离现在超过 10 分钟，拒绝
+  // 这可以防止因为时间戳错误而接受过旧的邮件
+  // 即使发送时间 >= startTime，如果邮件太旧，也可能是时间戳错误
+  const maxEmailAgeMs = 10 * 60 * 1000; // 10 分钟
+  if (emailAge > maxEmailAgeMs) {
+    const ageSeconds = Math.round(emailAge / 1000);
+    const maxAgeSeconds = Math.round(maxEmailAgeMs / 1000);
+    console.log(
+      `[IMAP] 拒绝：邮件发送时间 ${sentDate.toISOString()} 距离现在 ${ageSeconds}秒，超过最大允许年龄 ${maxAgeSeconds}秒，可能是时间戳错误`
+    );
+    return false;
+  }
 
   return true;
 }
@@ -174,39 +241,31 @@ async function fetchVerificationCodeWithClient(
   try {
     const now = new Date();
     const nowTimestamp = now.getTime();
-    
-    // 搜索窗口：从当前时间往前推 5 分钟
-    // 重要：只搜索最近 5 分钟内接收到的邮件，但验证时会确保邮件的发送时间 >= startTime（不允许使用旧邮件）
-    const searchWindowStart = nowTimestamp - EMAIL_SEARCH_WINDOW_MS;
-    const timeWindowStart = new Date(searchWindowStart);
 
     console.log('[IMAP] 邮件查询参数:');
     console.log('[IMAP]   StartTime (开始查询时间 UTC):', new Date(startTime).toISOString());
     console.log('[IMAP]   Current time (当前时间 UTC):', now.toISOString());
-    console.log('[IMAP]   Search window start (搜索窗口起始，从当前时间往前推5分钟):', timeWindowStart.toISOString());
-    console.log(
-      `[IMAP]   Search window: last ${EMAIL_SEARCH_WINDOW_MS / 1000} seconds (received time)`
-    );
-    console.log('[IMAP]   注意：只接受发送时间 >= startTime 的邮件（不允许使用旧邮件）');
+    console.log('[IMAP]   策略：只获取最新的一封邮件，使用 UTC 时间戳比较（时区无关）');
+    console.log('[IMAP]   只接受发送时间 >= startTime 的邮件（不允许使用旧邮件）');
 
-    // 使用 IMAP SEARCH 命令搜索指定时间范围内的邮件
-    // 注意：
-    // 1. IMAP的since是基于邮件的接收时间（internaldate），而不是发送时间
-    // 2. 我们只搜索最近 5 分钟内接收到的邮件
-    // 3. 在后续验证中，我们会使用邮件的发送时间（sentDate）进行精确的时间戳比较（时区无关）
-    // 4. 确保邮件的发送时间 >= startTime，不允许使用旧邮件
-    const uids = await client.search({ since: timeWindowStart }, { uid: true });
-    console.log('[IMAP] Found UIDs (before filtering):', uids);
+    // 策略：不依赖 IMAP 服务器的时间过滤（避免时区问题）
+    // 直接获取最新的一封邮件，然后使用 UTC 时间戳进行精确过滤
+    // 这样可以完全避免时区问题，因为所有时间比较都使用 UTC 时间戳（毫秒）
+    
+    // 获取最新的邮件 UID 列表（不指定时间范围，避免时区问题）
+    // 使用空搜索条件获取所有邮件，然后按 UID 排序取最新的一封
+    const allUids = await client.search({}, { uid: true });
+    console.log(`[IMAP] Total emails in mailbox: ${allUids ? allUids.length : 0}`);
 
-    if (!uids || uids.length === 0) {
-      console.log(
-        `[IMAP] No emails found in search window (since ${timeWindowStart.toISOString()})`
-      );
+    if (!allUids || allUids.length === 0) {
+      console.log('[IMAP] No emails found in mailbox');
       return null;
     }
 
-    // 按 UID 倒序排列（最新的优先），遍历所有邮件找到第一个有效的
-    uids.sort((a, b) => b - a);
+    // 按 UID 倒序排列（最新的优先），只取最新的一封邮件
+    allUids.sort((a, b) => b - a);
+    const uids = allUids.slice(0, 1);
+    console.log(`[IMAP] Checking latest email (UID: ${uids[0]})`);
 
     // 遍历所有邮件，找到第一个符合要求的（发送时间 >= startTime）
     for (const uid of uids) {
@@ -228,16 +287,42 @@ async function fetchVerificationCodeWithClient(
         const envelope = messageHeader.envelope;
         const subject = envelope?.subject?.[0] || '';
         const from = envelope?.from?.[0]?.address || '';
-        const sentDate = envelope?.date ? new Date(envelope.date) : null;
+        
+        // 解析邮件发送时间
+        // envelope.date 可能是 Date 对象或时间戳，确保转换为 Date 对象
+        let sentDate: Date | null = null;
+        if (envelope?.date) {
+          if (envelope.date instanceof Date) {
+            sentDate = envelope.date;
+          } else if (typeof envelope.date === 'number') {
+            sentDate = new Date(envelope.date);
+          } else if (typeof envelope.date === 'string') {
+            sentDate = new Date(envelope.date);
+          }
+        }
 
         console.log(`[IMAP] Checking email UID ${uid}:`);
         console.log('[IMAP]   Subject:', subject);
         console.log('[IMAP]   From:', from);
-        console.log('[IMAP]   Sent Date:', sentDate?.toISOString() || 'unknown');
+        if (sentDate) {
+          const sentTimestamp = sentDate.getTime();
+          const sentDateISO = sentDate.toISOString();
+          const startTimeISO = new Date(startTime).toISOString();
+          const timeDiff = sentTimestamp - startTime;
+          console.log('[IMAP]   Sent Date (UTC):', sentDateISO);
+          console.log('[IMAP]   Sent Timestamp (UTC ms):', sentTimestamp);
+          console.log('[IMAP]   StartTime (UTC):', startTimeISO);
+          console.log('[IMAP]   StartTime Timestamp (UTC ms):', startTime);
+          console.log('[IMAP]   Time difference:', timeDiff >= 0 ? `+${Math.round(timeDiff / 1000)}秒` : `${Math.round(timeDiff / 1000)}秒`);
+        } else {
+          console.log('[IMAP]   Sent Date: unknown (no date in envelope)');
+        }
 
         // 验证邮件是否符合要求（包括发送时间 >= startTime）
         // 注意：isValidEmail 内部使用 UTC 时间戳进行比较，完全时区无关
-        if (!isValidEmail(from, sentDate, now, startTime)) {
+        console.log('[IMAP]   开始验证邮件...');
+        const isValid = isValidEmail(from, sentDate, now, startTime);
+        if (!isValid) {
           const emailAge = sentDate
             ? Math.round((nowTimestamp - sentDate.getTime()) / 1000)
             : 'unknown';
@@ -245,11 +330,18 @@ async function fetchVerificationCodeWithClient(
           const timeDiff = sentTimestamp && sentTimestamp < startTime
             ? Math.round((startTime - sentTimestamp) / 1000)
             : null;
+          const fromMatch = from && (from.toLowerCase().includes('pokemon') || from.toLowerCase().includes('pokemoncenter'));
           console.log(
-            `[IMAP]   Email validation failed. From: ${from}, Age: ${emailAge}s, Sent: ${sentDate?.toISOString() || 'unknown'} (UTC)${timeDiff ? `, 早于开始时间 ${timeDiff}秒` : ''}`
+            `[IMAP]   ❌ Email validation failed. From: ${from}${fromMatch ? ' (contains pokemon)' : ''}, Age: ${emailAge}s, Sent: ${sentDate?.toISOString() || 'unknown'} (UTC)${timeDiff ? `, 早于开始时间 ${timeDiff}秒` : ''}`
           );
+          // 如果发送者匹配但时间不匹配，记录详细信息以便调试
+          if (fromMatch && timeDiff) {
+            console.log(`[IMAP]   ⚠️  Found Pokemon Center email but time validation failed (sent ${Math.abs(timeDiff)}s ${timeDiff > 0 ? 'before' : 'after'} startTime)`);
+          }
           continue; // 继续检查下一个邮件
         }
+        
+        console.log('[IMAP]   ✅ Email validation passed!');
 
         const sentTimestamp = sentDate.getTime();
         const timeDiff = Math.round((sentTimestamp - startTime) / 1000);
@@ -274,14 +366,19 @@ async function fetchVerificationCodeWithClient(
 
         const source = messageBody.source.toString();
         console.log('[IMAP]   Content length:', source.length);
+        console.log('[IMAP]   Content type check (HTML/Text):', source.includes('<html') || source.includes('<HTML') ? 'HTML' : 'Text');
 
         // 使用更精确的验证码提取函数
         const code = extractVerificationCode(source);
         if (code) {
-          console.log('[IMAP] Found valid verification code:', code, 'from email:', subject);
+          console.log('[IMAP] ✅ Found valid verification code:', code, 'from email:', subject);
           return code;
         } else {
-          console.log(`[IMAP]   No verification code found in email UID ${uid}`);
+          console.log(`[IMAP]   ❌ No verification code found in email UID ${uid}, Subject: ${subject}`);
+          // 如果是从Pokemon Center来的邮件但没找到验证码，记录更多信息
+          if (from && from.toLowerCase().includes('pokemon')) {
+            console.log(`[IMAP]   ⚠️  This is a Pokemon Center email but no code extracted. Please check the email format.`);
+          }
           continue; // 继续检查下一个邮件
         }
       } catch (fetchErr) {
@@ -365,12 +462,13 @@ export function registerGetMail2FAHandler(ipcMain: typeof import('electron').ipc
 
       console.log(`[get-mail-2fa] IMAP 配置: ${codeMail} @ ${imapHost}:${imapPort}`);
 
-      const requestTime = new Date();
-      console.log(`[get-mail-2fa] 请求时间: ${requestTime.toISOString()}`);
+      const requestTime = Date.now();
+      const requestTimeDate = new Date(requestTime);
+      console.log(`[get-mail-2fa] 请求时间: ${requestTimeDate.toISOString()}`);
       console.log(
         `[get-mail-2fa] 开始轮询获取验证码，每 ${
           POLL_INTERVAL_MS / 1000
-        }秒 一次，共 ${MAX_POLL_ATTEMPTS} 次（总计 ${TOTAL_TIMEOUT_MS / 1000}秒）`
+        }秒 一次，总超时时间 ${TOTAL_TIMEOUT_MS / 1000}秒（基于时间，自动计算轮询次数）`
       );
       console.log(
         `[get-mail-2fa] 只接受在 ${queryStartDate.toISOString()} 之后发送的邮件`
@@ -396,12 +494,25 @@ export function registerGetMail2FAHandler(ipcMain: typeof import('electron').ipc
         await client.connect();
         console.log('[get-mail-2fa] IMAP 连接成功，开始轮询...');
 
-        // 轮询过程中复用同一个连接
-        for (let attempt = 1; attempt <= MAX_POLL_ATTEMPTS; attempt++) {
+        // 基于时间的轮询：持续轮询直到超时或找到验证码
+        let attempt = 0;
+        while (true) {
+          attempt++;
           try {
-            const elapsed = Math.round((Date.now() - requestTime.getTime()) / 1000);
+            const now = Date.now();
+            const elapsed = Math.round((now - requestTime) / 1000);
+            const remaining = Math.round((TOTAL_TIMEOUT_MS - (now - requestTime)) / 1000);
+            
+            // 检查是否超时
+            if (now - requestTime >= TOTAL_TIMEOUT_MS) {
+              console.log(
+                `[get-mail-2fa] Timeout: 已用时 ${elapsed}秒，超过总超时时间 ${TOTAL_TIMEOUT_MS / 1000}秒`
+              );
+              return null;
+            }
+
             console.log(
-              `[get-mail-2fa] Attempt ${attempt}/${MAX_POLL_ATTEMPTS} (已用时: ${elapsed}秒)...`
+              `[get-mail-2fa] Attempt ${attempt} (已用时: ${elapsed}秒, 剩余: ${remaining}秒)...`
             );
 
             // 检查连接状态，如果断开则重连
@@ -420,7 +531,8 @@ export function registerGetMail2FAHandler(ipcMain: typeof import('electron').ipc
             // 传入 startTime，确保只接受在此时间之后发送的邮件
             const code = await fetchVerificationCodeWithClient(client, queryStartTime);
             if (code) {
-              console.log(`[get-mail-2fa] Found valid code: ${code}`);
+              const totalElapsed = Math.round((Date.now() - requestTime) / 1000);
+              console.log(`[get-mail-2fa] ✅ Found valid code: ${code} (总用时: ${totalElapsed}秒)`);
               return code;
             }
 
@@ -428,14 +540,45 @@ export function registerGetMail2FAHandler(ipcMain: typeof import('electron').ipc
               `[get-mail-2fa] No valid code found (邮件发送时间必须 >= ${queryStartDate.toISOString()})`
             );
 
-            // 如果不是最后一次尝试，等待后继续
-            if (attempt < MAX_POLL_ATTEMPTS) {
-              console.log(`[get-mail-2fa] Waiting ${POLL_INTERVAL_MS / 1000}s before next attempt...`);
-              await sleep(POLL_INTERVAL_MS);
+            // 检查是否还有剩余时间
+            const timeAfterCheck = Date.now();
+            const remainingAfterCheck = TOTAL_TIMEOUT_MS - (timeAfterCheck - requestTime);
+            
+            if (remainingAfterCheck <= 0) {
+              const totalElapsed = Math.round((timeAfterCheck - requestTime) / 1000);
+              console.log(
+                `[get-mail-2fa] Timeout: 已用时 ${totalElapsed}秒，超过总超时时间 ${TOTAL_TIMEOUT_MS / 1000}秒`
+              );
+              return null;
+            }
+
+            // 计算等待时间：取轮询间隔和剩余时间中的较小值
+            const waitTime = Math.min(POLL_INTERVAL_MS, remainingAfterCheck);
+            if (waitTime > 0) {
+              console.log(`[get-mail-2fa] Waiting ${Math.round(waitTime / 1000)}s before next attempt...`);
+              await sleep(waitTime);
+            } else {
+              // 没有剩余时间了，直接返回
+              const totalElapsed = Math.round((Date.now() - requestTime) / 1000);
+              console.log(
+                `[get-mail-2fa] Timeout: 已用时 ${totalElapsed}秒，超过总超时时间 ${TOTAL_TIMEOUT_MS / 1000}秒`
+              );
+              return null;
             }
           } catch (error: unknown) {
             const err = error as Error;
             console.error(`[get-mail-2fa] Attempt ${attempt} failed:`, err.message);
+            
+            // 检查是否超时
+            const now = Date.now();
+            if (now - requestTime >= TOTAL_TIMEOUT_MS) {
+              const totalElapsed = Math.round((now - requestTime) / 1000);
+              console.log(
+                `[get-mail-2fa] Timeout: 已用时 ${totalElapsed}秒，超过总超时时间 ${TOTAL_TIMEOUT_MS / 1000}秒`
+              );
+              return null;
+            }
+            
             // 如果是连接错误，尝试重连
             if (
               err.message?.includes('connection') ||
@@ -446,34 +589,63 @@ export function registerGetMail2FAHandler(ipcMain: typeof import('electron').ipc
               try {
                 await client.connect();
                 console.log('[get-mail-2fa] 重连成功，继续轮询');
-                // 重连成功后，如果不是最后一次尝试，等待后继续
-                if (attempt < MAX_POLL_ATTEMPTS) {
-                  await sleep(POLL_INTERVAL_MS);
+                
+                // 检查是否还有剩余时间
+                const timeAfterReconnect = Date.now();
+                const remainingAfterReconnect = TOTAL_TIMEOUT_MS - (timeAfterReconnect - requestTime);
+                if (remainingAfterReconnect <= 0) {
+                  const totalElapsed = Math.round((timeAfterReconnect - requestTime) / 1000);
+                  console.log(
+                    `[get-mail-2fa] Timeout: 已用时 ${totalElapsed}秒，超过总超时时间 ${TOTAL_TIMEOUT_MS / 1000}秒`
+                  );
+                  return null;
+                }
+                
+                // 计算等待时间
+                const waitTime = Math.min(POLL_INTERVAL_MS, remainingAfterReconnect);
+                if (waitTime > 0) {
+                  await sleep(waitTime);
                 }
                 continue;
               } catch (reconnectErr: unknown) {
                 const reconnectError = reconnectErr as Error;
                 console.error('[get-mail-2fa] 重连失败:', reconnectError.message);
-                if (attempt === MAX_POLL_ATTEMPTS) {
-                  throw reconnectErr;
+                
+                // 检查是否超时
+                const timeAfterReconnectFail = Date.now();
+                if (timeAfterReconnectFail - requestTime >= TOTAL_TIMEOUT_MS) {
+                  const totalElapsed = Math.round((timeAfterReconnectFail - requestTime) / 1000);
+                  console.log(
+                    `[get-mail-2fa] Timeout: 已用时 ${totalElapsed}秒，超过总超时时间 ${TOTAL_TIMEOUT_MS / 1000}秒`
+                  );
+                  return null;
                 }
-                await sleep(POLL_INTERVAL_MS);
+                
+                const waitTime = Math.min(POLL_INTERVAL_MS, TOTAL_TIMEOUT_MS - (timeAfterReconnectFail - requestTime));
+                if (waitTime > 0) {
+                  await sleep(waitTime);
+                }
                 continue;
               }
             }
-            if (attempt === MAX_POLL_ATTEMPTS) {
-              throw error;
+            
+            // 其他错误，等待后继续（如果还有时间）
+            const timeAfterError = Date.now();
+            const remainingAfterError = TOTAL_TIMEOUT_MS - (timeAfterError - requestTime);
+            if (remainingAfterError <= 0) {
+              const totalElapsed = Math.round((timeAfterError - requestTime) / 1000);
+              console.log(
+                `[get-mail-2fa] Timeout: 已用时 ${totalElapsed}秒，超过总超时时间 ${TOTAL_TIMEOUT_MS / 1000}秒`
+              );
+              return null;
             }
-            await sleep(POLL_INTERVAL_MS);
+            
+            const waitTime = Math.min(POLL_INTERVAL_MS, remainingAfterError);
+            if (waitTime > 0) {
+              await sleep(waitTime);
+            }
           }
         }
-
-        console.log(
-          `[get-mail-2fa] Timeout: No valid verification code found within ${
-            TOTAL_TIMEOUT_MS / 1000
-          } seconds (${MAX_POLL_ATTEMPTS} attempts, ${POLL_INTERVAL_MS / 1000}s interval)`
-        );
-        return null;
       } catch (error) {
         console.error('[get-mail-2fa] 连接错误:', error);
         throw error;

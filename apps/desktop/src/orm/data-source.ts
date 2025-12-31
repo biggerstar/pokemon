@@ -26,8 +26,8 @@ export const AppDataSource = new DataSource({
   // entities: ["src/entity/**/*.ts"],
 });
 
-// 初始化数据源
-AppDataSource.initialize()
+// 保存初始化 Promise，供其他模块等待初始化完成
+export const dataSourceInitPromise = AppDataSource.initialize()
   .then(async () => {
     console.log("SQLite 数据源已初始化！");
     
@@ -55,4 +55,5 @@ AppDataSource.initialize()
   })
   .catch((err) => {
     console.error("数据源初始化时出错", err);
+    throw err; // 重新抛出错误，让等待的代码能够捕获
   });

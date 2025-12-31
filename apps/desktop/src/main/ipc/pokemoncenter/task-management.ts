@@ -2,7 +2,7 @@ import { ipcMain, WebContents } from 'electron';
 import { AccountEntity, TaskStatus } from '@/orm/entities/account';
 import { AppDataSource } from '@/orm/data-source';
 import { TaskQueueManager } from '@/main/windows/browser/browser';
-import { ensureDataSourceReady } from './utils';
+import { ensureDataSourceReady, getAccountMailFromEvent } from './utils';
 import { initializeAccountStatus } from './account-management';
 
 export function registerTaskManagementHandlers(ipcMain: typeof import('electron').ipcMain) {
@@ -116,7 +116,10 @@ export function registerTaskManagementHandlers(ipcMain: typeof import('electron'
         const oldStatus = account.status;
         const oldStatusText = account.statusText;
         account.status = status;
-        account.statusText = statusText || '';
+        // 只有当 statusText 有值时才更新 statusText（不为 undefined、null 或空字符串）
+        if (statusText !== undefined && statusText !== null && statusText !== '') {
+          account.statusText = statusText;
+        }
         await repo.save(account);
 
         console.log(

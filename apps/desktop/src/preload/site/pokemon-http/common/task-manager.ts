@@ -174,7 +174,12 @@ export class TaskManager {
     // 先获取 mail，因为 updateStatus 可能会清除任务信息
     const mail = this.getCurrentAccountMail() || this.get()?.mail;
 
-    const result = await this.updateStatus(statusText, 'DONE');
+    if (!mail) {
+      console.warn('[TaskManager] complete 无法获取账号邮箱，无法更新状态');
+      return false;
+    }
+
+    const result = await this.updateStatus(statusText, 'DONE', mail);
     console.log(`[TaskManager] complete 结果: ${result}, mail: ${mail}`);
 
     // 无论 updateStatus 是否成功，都尝试关闭窗口
@@ -198,8 +203,16 @@ export class TaskManager {
    * @param statusText 错误描述
    */
   static async error(statusText: string): Promise<boolean> {
+    // 先获取 mail，确保能正确更新状态
+    const mail = this.getCurrentAccountMail() || this.get()?.mail;
+
+    if (!mail) {
+      console.warn('[TaskManager] error 无法获取账号邮箱，无法更新状态');
+      return false;
+    }
+
     // 直接更新状态为 ERROR，以便主进程能够正确处理重试逻辑
-    return this.updateStatus(statusText || '发生错误');
+    return this.updateStatus(statusText || '发生错误', 'ERROR', mail);
   }
 
   /**
@@ -207,7 +220,15 @@ export class TaskManager {
    * @param statusText 错误描述（可选，如果为空字符串、null 或 undefined，则不更新 statusText）
    */
   static async errorComplete(statusText?: string | null): Promise<void> {
-    await this.updateStatus(statusText, 'ERROR');
+    // 先获取 mail，因为 updateStatus 可能会清除任务信息
+    const mail = this.getCurrentAccountMail() || this.get()?.mail;
+
+    if (!mail) {
+      console.warn('[TaskManager] errorComplete 无法获取账号邮箱，无法更新状态');
+      return;
+    }
+
+    await this.updateStatus(statusText, 'ERROR', mail);
 
     // 无论 updateStatus 是否成功，都尝试关闭窗口
     // 因为任务已经错误，窗口应该关闭

@@ -4,9 +4,9 @@ export const POKEMONCENTER_RECAPTCHA_WEBSITE_KEY = '6Le9HlYqAAAAAJQtQcq3V_tdd73t
 // 邮件验证码配置
 export const POKEMONCENTER_EMAIL = 'info@pokemoncenter-online.com';
 export const EMAIL_SEARCH_WINDOW_MS = 5 * 60 * 1000; // 5分钟（300秒）
-export const POLL_INTERVAL_MS = 5 * 1000; // 5秒
-export const MAX_POLL_ATTEMPTS = 60; // 60次（5分钟 = 300秒 / 5秒 = 60次）
-export const TOTAL_TIMEOUT_MS = MAX_POLL_ATTEMPTS * POLL_INTERVAL_MS; // 300秒（5分钟）
+export const POLL_INTERVAL_MS = 15 * 1000; // 15秒
+export const TOTAL_TIMEOUT_MS = 5 * 60 * 1000; // 5分钟（300秒）- 总超时时间，基于时间而非次数
+export const MAX_EMAILS_TO_CHECK = 1; // 只获取最新的一封邮件
 
 // 验证码黑名单 - 这些验证码会被忽略
 export const CODE_BLACKLIST = new Set([

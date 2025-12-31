@@ -4,12 +4,15 @@ import {
   DEFAULT_POKEMONCENTER_REQUEST_CONFIG,
   GIGYA_API_KEY,
   SSO_KEY,
-} from "./constant";
-import axios, { AxiosInstance } from "axios";
-import { ipcRenderer } from "electron";
-import { AccountData, TaskManager } from "@/preload/site/pokemon-http/common/task-manager";
+} from './constant';
+import axios, { AxiosInstance } from 'axios';
+import { ipcRenderer } from 'electron';
+import {
+  AccountData,
+  TaskManager,
+} from '@/preload/site/pokemon-http/common/task-manager';
 import jaconv from 'jaconv';
-import { sleep } from "@/utils/time";
+import { sleep } from '@/utils/time';
 
 export class LoginClient {
   public axios: AxiosInstance;
@@ -40,7 +43,7 @@ export class LoginClient {
       ...DEFAULT_POKEMONCENTER_REQUEST_CONFIG,
     });
     this.taskInfo = TaskManager.getData() ?? {};
-    console.log('当前任务: ', this.taskInfo)
+    console.log('当前任务: ', this.taskInfo);
     if (!this.taskInfo.loginId || !this.taskInfo.loginPass) {
       throw new Error('当前任务没有指定账号信息');
     }
@@ -58,7 +61,12 @@ export class LoginClient {
    * 设置 cookie（浏览器环境）
    * 注意：浏览器安全策略可能限制跨域 cookie 的设置
    */
-  private setCookie(name: string, value: string, domain: string, path: string = '/') {
+  private setCookie(
+    name: string,
+    value: string,
+    domain: string,
+    path: string = '/',
+  ) {
     // 在浏览器中，只能设置当前域名或父域名的 cookie
     // 如果 domain 以 . 开头，表示可以被子域名共享
     const cookieString = `${name}=${value}; path=${path}; domain=${domain}${location.protocol === 'https:' ? '; Secure' : ''}; SameSite=None`;
@@ -67,10 +75,18 @@ export class LoginClient {
 
   public injectCookie() {
     // 设置 API 域名的 cookies
-    this.setCookie(`apiDomain_${SSO_KEY}`, 'id.pokemoncenter-online.com', '.pokemoncenter-online.com');
+    this.setCookie(
+      `apiDomain_${SSO_KEY}`,
+      'id.pokemoncenter-online.com',
+      '.pokemoncenter-online.com',
+    );
 
     // 设置基础域名的 cookies
-    this.setCookie(`gig_bootstrap_${GIGYA_API_KEY}`, 'id_ver4', '.pokemoncenter-online.com');
+    this.setCookie(
+      `gig_bootstrap_${GIGYA_API_KEY}`,
+      'id_ver4',
+      '.pokemoncenter-online.com',
+    );
   }
 
   public setUsername(username: string) {
@@ -89,9 +105,16 @@ export class LoginClient {
    * @param service 验证码服务类型: 'capmonster' | '2captcha'，默认为 'capmonster'
    * @returns 验证码 token
    */
-  private async resolveCaptcha(pageUrl: string, service: 'capmonster' | '2captcha' = 'capmonster'): Promise<string | null> {
+  private async resolveCaptcha(
+    pageUrl: string,
+    service: 'capmonster' | '2captcha' = 'capmonster',
+  ): Promise<string | null> {
     try {
-      const captchaToken = await ipcRenderer.invoke('resolve-recaptcha-unified', pageUrl, service);
+      const captchaToken = await ipcRenderer.invoke(
+        'resolve-recaptcha-unified',
+        pageUrl,
+        service,
+      );
       return captchaToken || null;
     } catch (error: any) {
       console.error(`[resolveCaptcha] 验证码解析失败 (${service}):`, error);
@@ -102,10 +125,13 @@ export class LoginClient {
   private async visitLoginPage() {
     return this.axios
       .get(BASE_DOMAIN_URLS.LOGIN, { responseType: 'text' })
-      .then(res => {
+      .then((res) => {
         const html = res.data;
         const doc = new DOMParser().parseFromString(html, 'text/html');
-        this.csrfToken = doc.querySelector('input[name="csrf_token"]')?.getAttribute('value') || this.csrfToken;
+        this.csrfToken =
+          doc
+            .querySelector('input[name="csrf_token"]')
+            ?.getAttribute('value') || this.csrfToken;
         return html;
       });
   }
@@ -113,10 +139,13 @@ export class LoginClient {
   private async visitMailLoginPage() {
     return this.axios
       .get(BASE_DOMAIN_URLS.MAIL_LOGIN, { responseType: 'text' })
-      .then(res => {
+      .then((res) => {
         const html = res.data;
         const doc = new DOMParser().parseFromString(html, 'text/html');
-        this.csrfToken = doc.querySelector('input[name="csrf_token"]')?.getAttribute('value') || this.csrfToken;
+        this.csrfToken =
+          doc
+            .querySelector('input[name="csrf_token"]')
+            ?.getAttribute('value') || this.csrfToken;
         return html;
       });
   }
@@ -126,11 +155,11 @@ export class LoginClient {
       params: {
         apiKey: GIGYA_API_KEY,
         pageURL: BASE_DOMAIN_URLS.LOGIN,
-        sdk: "js_next",
+        sdk: 'js_next',
         sdkBuild: this.sdkBuild,
-        format: "json",
+        format: 'json',
       },
-    })
+    });
     // .catch(() => { });
   }
 
@@ -138,12 +167,12 @@ export class LoginClient {
     return this.axios.get(BASE_ID_DOMAIN_API_URLS.SSO, {
       params: {
         APIKey: GIGYA_API_KEY,
-        ssoSegment: "",
-        version: "next",
+        ssoSegment: '',
+        version: 'next',
         build: this.sdkBuild,
-        flavor: "base",
+        flavor: 'base',
       },
-    })
+    });
     // .catch((error) => {
     //   console.error('[SSO API] 请求失败:', error);
     // });
@@ -155,29 +184,33 @@ export class LoginClient {
   }
 
   private isLoginSuccess(res: any) {
-    return res.data?.statusCode === "OK" && res.data?.statusCode === 200 && !!res.data?.userInfo;
+    return (
+      res.data?.statusCode === 'OK' &&
+      res.data?.statusCode === 200 &&
+      !!res.data?.userInfo
+    );
   }
 
   private async loginApi() {
     if (!this.username || !this.password || !this.captchaToken) {
-      throw new Error("username, password, captchaToken are required");
+      throw new Error('username, password, captchaToken are required');
     }
     const data = {
       loginID: this.username,
       password: this.password,
-      sessionExpiration: "3600",
-      targetEnv: "jssdk",
-      include: "profile,data",
-      includeUserInfo: "true",
+      sessionExpiration: '3600',
+      targetEnv: 'jssdk',
+      include: 'profile,data',
+      includeUserInfo: 'true',
       captchaToken: this.captchaToken,
-      captchaType: "reCaptchaEnterpriseScore",
-      lang: "ja",
+      captchaType: 'reCaptchaEnterpriseScore',
+      lang: 'ja',
       APIKey: GIGYA_API_KEY,
-      sdk: "js_latest",
-      authMode: "cookie",
-      pageURL: "https://www.pokemoncenter-online.com/login/",
+      sdk: 'js_latest',
+      authMode: 'cookie',
+      pageURL: 'https://www.pokemoncenter-online.com/login/',
       sdkBuild: this.sdkBuild,
-      format: "json",
+      format: 'json',
     };
 
     const formData = new URLSearchParams();
@@ -185,16 +218,18 @@ export class LoginClient {
       formData.append(key, String(value));
     });
 
-    return this.axios.post(BASE_ID_DOMAIN_API_URLS.LOGIN, formData.toString(), {
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-    })
+    return this.axios
+      .post(BASE_ID_DOMAIN_API_URLS.LOGIN, formData.toString(), {
+        headers: {
+          'content-type': 'application/x-www-form-urlencoded',
+        },
+      })
       .then((res) => {
-        const { errorDetails, errorCode, errorMessage, regToken, UID } = res.data;
+        const { errorDetails, errorCode, errorMessage, regToken, UID } =
+          res.data;
         console.log(res.data);
         if (this.isLoginSuccess(res)) {
-          return 'ok'
+          return 'ok';
         }
         if (!regToken) {
           throw new Error(`登录失败: ReCaptcha 验证失败`);
@@ -202,7 +237,7 @@ export class LoginClient {
         if (errorCode !== 0 && errorCode !== 403101) {
           throw new Error(`登录失败: ${errorDetails || errorMessage}`);
         }
-        console.info("regToken:", regToken)
+        console.info('regToken:', regToken);
         this.regToken = regToken;
         this.uid = UID;
         localStorage.setItem('regToken', regToken);
@@ -212,29 +247,31 @@ export class LoginClient {
       .catch((error) => {
         console.error('[登录API] 请求失败:', error);
         throw error;
-      })
+      });
   }
 
   private async initTFAApi() {
     if (!this.regToken) {
-      throw new Error("regToken is required");
+      throw new Error('regToken is required');
     }
 
-    return this.axios.post(BASE_ID_DOMAIN_API_URLS.TFA, null, {
-      params: {
-        provider: 'gigyaEmail',
-        mode: 'verify',
-        regToken: this.regToken,
-        APIKey: GIGYA_API_KEY,
-        sdk: 'js_latest',
-        pageURL: BASE_DOMAIN_URLS.LOGIN,
-        sdkBuild: this.sdkBuild,
-        format: 'json'
-      },
-    })
-      .then(res => {
+    return this.axios
+      .post(BASE_ID_DOMAIN_API_URLS.TFA, null, {
+        params: {
+          provider: 'gigyaEmail',
+          mode: 'verify',
+          regToken: this.regToken,
+          APIKey: GIGYA_API_KEY,
+          sdk: 'js_latest',
+          pageURL: BASE_DOMAIN_URLS.LOGIN,
+          sdkBuild: this.sdkBuild,
+          format: 'json',
+        },
+      })
+      .then((res) => {
         console.log(res.data);
-        const { errorDetails, errorCode, errorMessage, gigyaAssertion } = res.data;
+        const { errorDetails, errorCode, errorMessage, gigyaAssertion } =
+          res.data;
         if (errorCode !== 0) {
           throw new Error(`初始化 TFA 失败: ${errorDetails || errorMessage}`);
         }
@@ -244,94 +281,99 @@ export class LoginClient {
       .catch((error) => {
         console.error('[TFA API] 请求失败:', error);
         throw error;
-      })
+      });
   }
 
   private async factor2AuthApi() {
     if (!this.uid || !this.gigyaAssertion || !this.csrfToken) {
-      throw new Error("uid, gigyaAssertion, csrfToken are required");
+      throw new Error('uid, gigyaAssertion, csrfToken are required');
     }
     const data = {
       UID: this.uid,
       gigyaAssertion: this.gigyaAssertion,
-      csrf_token: this.csrfToken
+      csrf_token: this.csrfToken,
     };
 
-    return this.axios.request({
-      url: BASE_DOMAIN_URLS.FACTOR2_AUTH,
-      method: 'POST',
-      params: {
-        rurl: '1'
-      },
-      data: data,
-      headers: {
-        'content-type': 'application/x-www-form-urlencoded',
-      },
-    })
-      .then(res => {
+    return this.axios
+      .request({
+        url: BASE_DOMAIN_URLS.FACTOR2_AUTH,
+        method: 'POST',
+        params: {
+          rurl: '1',
+        },
+        data: data,
+        headers: {
+          'content-type': 'application/x-www-form-urlencoded',
+        },
+      })
+      .then((res) => {
         console.log('[认证] factor2AuthApi 响应:', res.data);
         return res;
       })
       .catch((error) => {
         console.error('[认证] factor2AuthApi 请求失败:', error);
         throw error;
-      })
+      });
   }
 
   private async fetchMail2FaPage() {
-    return fetch("https://www.pokemoncenter-online.com/login-mfa/?rurl=1", {
-      "headers": {
-        "cache-control": "max-age=0",
-        "content-type": "application/x-www-form-urlencoded",
-        "x-uctiming-46938875": Math.floor(Date.now() / 1000).toString()
+    return fetch('https://www.pokemoncenter-online.com/login-mfa/?rurl=1', {
+      headers: {
+        'cache-control': 'max-age=0',
+        'content-type': 'application/x-www-form-urlencoded',
+        'x-uctiming-46938875': Math.floor(Date.now() / 1000).toString(),
       },
-      "referrer": "https://www.pokemoncenter-online.com/login/",
-      "body": `csrf_token=${this.csrfToken}&apiUidSignatureUid=${this.uid}&regToken=${this.regToken}&loginemail=${this.username}&loginpass=${this.password}`,
-      "method": "POST",
-      "mode": "cors",
-      "credentials": "include"
+      referrer: 'https://www.pokemoncenter-online.com/login/',
+      body: `csrf_token=${this.csrfToken}&apiUidSignatureUid=${this.uid}&regToken=${this.regToken}&loginemail=${this.username}&loginpass=${this.password}`,
+      method: 'POST',
+      mode: 'cors',
+      credentials: 'include',
     })
-      .then(res => res.text())
-      .then(html => {
+      .then((res) => res.text())
+      .then((html) => {
         const doc = new DOMParser().parseFromString(html, 'text/html');
-        this.csrfToken = doc.querySelector('input[name="csrf_token"]')?.getAttribute('value') || this.csrfToken;
+        this.csrfToken =
+          doc
+            .querySelector('input[name="csrf_token"]')
+            ?.getAttribute('value') || this.csrfToken;
         return html;
-      })
+      });
   }
 
   private async mail2faApi() {
     if (!this.csrfToken || !this.uid || !this.regToken) {
-      throw new Error("csrfToken, uid, regToken are required");
+      throw new Error('csrfToken, uid, regToken are required');
     }
     if (!this.mail2AuthCode) {
-      throw new Error("mail2AuthCode is required");
+      throw new Error('mail2AuthCode is required');
     }
-    return axios.request({
-      url: "https://www.pokemoncenter-online.com/on/demandware.store/Sites-POL-Site/ja_JP/Factor2Auth-Authentication",
-      method: "POST",
-      params: {
-        rurl: '1'
-      },
-      headers: {
-        "cache-control": "no-cache",
-        "content-type": "application/x-www-form-urlencoded;",
-      },
-      data: {
-        mockModeFlg: "false",
-        csrf_token: this.csrfToken,
-        apiUidSignatureUid: this.uid,
-        regToken: this.regToken,
-        dwfrm_factor2Auth_authCode: this.mail2AuthCode,
-      }
-    })
-      .then(res => {
+    return axios
+      .request({
+        url: 'https://www.pokemoncenter-online.com/on/demandware.store/Sites-POL-Site/ja_JP/Factor2Auth-Authentication',
+        method: 'POST',
+        params: {
+          rurl: '1',
+        },
+        headers: {
+          'cache-control': 'no-cache',
+          'content-type': 'application/x-www-form-urlencoded;',
+        },
+        data: {
+          mockModeFlg: 'false',
+          csrf_token: this.csrfToken,
+          apiUidSignatureUid: this.uid,
+          regToken: this.regToken,
+          dwfrm_factor2Auth_authCode: this.mail2AuthCode,
+        },
+      })
+      .then((res) => {
         console.log('[邮件验证码] mail2faApi 响应:', res.data);
         return res.data.success === true && res.data.loggedin === true;
       })
       .catch((error) => {
         console.error('[邮件验证码] mail2faApi 请求失败:', error);
         throw error;
-      })
+      });
   }
 
   /**
@@ -346,14 +388,18 @@ export class LoginClient {
     const startTime = Date.now();
     const startTimeDate = new Date(startTime);
     console.log(
-      `[邮件验证码] 开始查询时间: ${startTimeDate.toISOString()} (timestamp: ${startTime})`
+      `[邮件验证码] 开始查询时间: ${startTimeDate.toISOString()} (timestamp: ${startTime})`,
     );
     await TaskManager.updateStatus(
-      `[邮件验证码] 开始查询，只接受 ${startTimeDate.toISOString()} 之后发送的邮件`
+      `[邮件验证码] 开始查询，只接受 ${startTimeDate.toISOString()} 之后发送的邮件`,
     );
 
     // 第一次尝试获取，传入 startTime
-    const firstCode = await ipcRenderer.invoke('get-mail-2fa', this.username, startTime);
+    const firstCode = await ipcRenderer.invoke(
+      'get-mail-2fa',
+      this.username,
+      startTime,
+    );
 
     if (!firstCode) {
       await TaskManager.updateStatus('[邮件验证码] 获取失败，未获取到验证码');
@@ -364,55 +410,74 @@ export class LoginClient {
     if (!this.usedMail2AuthCodes.has(firstCode)) {
       // 获取到新的验证码
       this.usedMail2AuthCodes.add(firstCode);
-      await TaskManager.updateStatus(`[邮件验证码] 获取成功，验证码: ${firstCode}`);
+      await TaskManager.updateStatus(
+        `[邮件验证码] 获取成功，验证码: ${firstCode}`,
+      );
       return firstCode;
     }
 
     // 如果第一次获取的验证码是已使用过的，再尝试一次
     // 注意：第二次查询时仍然使用相同的 startTime，确保不会获取到旧的验证码
-    await TaskManager.updateStatus('[邮件验证码] 获取到已使用的验证码，重新获取一次...');
-    const secondCode = await ipcRenderer.invoke('get-mail-2fa', this.username, startTime);
+    await TaskManager.updateStatus(
+      '[邮件验证码] 获取到已使用的验证码，重新获取一次...',
+    );
+    const secondCode = await ipcRenderer.invoke(
+      'get-mail-2fa',
+      this.username,
+      startTime,
+    );
 
     if (!secondCode) {
-      await TaskManager.updateStatus('[邮件验证码] 重新获取失败，未获取到验证码');
+      await TaskManager.updateStatus(
+        '[邮件验证码] 重新获取失败，未获取到验证码',
+      );
       return null;
     }
 
     // 检查第二次获取的验证码是否已使用过
     if (this.usedMail2AuthCodes.has(secondCode)) {
-      await TaskManager.updateStatus('[邮件验证码] 重新获取的验证码也是已使用的');
+      await TaskManager.updateStatus(
+        '[邮件验证码] 重新获取的验证码也是已使用的',
+      );
       return null;
     }
 
     // 获取到新的验证码
     this.usedMail2AuthCodes.add(secondCode);
-    await TaskManager.updateStatus(`[邮件验证码] 重新获取成功，验证码: ${secondCode}`);
+    await TaskManager.updateStatus(
+      `[邮件验证码] 重新获取成功，验证码: ${secondCode}`,
+    );
     return secondCode;
   }
 
   private async finalizeRegistrationApi(): Promise<any> {
     if (!this.regToken) {
-      throw new Error("regToken is required");
+      throw new Error('regToken is required');
     }
-    const urlInfo = new URL('https://id.pokemoncenter-online.com/accounts.finalizeRegistration')
-    urlInfo.searchParams.append('regToken', this.regToken)
-    urlInfo.searchParams.append('targetEnv', 'jssdk')
-    urlInfo.searchParams.append('include', 'profile,data')
-    urlInfo.searchParams.append('includeUserInfo', 'true')
-    urlInfo.searchParams.append('APIKey', GIGYA_API_KEY)
-    urlInfo.searchParams.append('sdk', 'js_next')
-    urlInfo.searchParams.append('pageURL', 'https://www.pokemoncenter-online.com/login-mfa/')
-    urlInfo.searchParams.append('sdkBuild', this.sdkBuild)
-    urlInfo.searchParams.append('format', 'json')
+    const urlInfo = new URL(
+      'https://id.pokemoncenter-online.com/accounts.finalizeRegistration',
+    );
+    urlInfo.searchParams.append('regToken', this.regToken);
+    urlInfo.searchParams.append('targetEnv', 'jssdk');
+    urlInfo.searchParams.append('include', 'profile,data');
+    urlInfo.searchParams.append('includeUserInfo', 'true');
+    urlInfo.searchParams.append('APIKey', GIGYA_API_KEY);
+    urlInfo.searchParams.append('sdk', 'js_next');
+    urlInfo.searchParams.append(
+      'pageURL',
+      'https://www.pokemoncenter-online.com/login-mfa/',
+    );
+    urlInfo.searchParams.append('sdkBuild', this.sdkBuild);
+    urlInfo.searchParams.append('format', 'json');
     const res = await fetch(urlInfo.toString(), {
       credentials: 'include',
       redirect: 'follow',
-    }).then(res => res.json());
+    }).then((res) => res.json());
 
     this.genLoggedInToken();
-    console.info("最终注册成功 TOKEN: ", this.finalRegistrationToken)
+    console.info('最终注册成功 TOKEN: ', this.finalRegistrationToken);
 
-    this.login_token = res.sessionInfo.login_token
+    this.login_token = res.sessionInfo.login_token;
     this.uid = res.userInfo.UID ?? this.uid;
     this.uidSig = res.userInfo.UIDSig ?? this.uidSig;
     this.uidSignature = res.userInfo.UIDSignature ?? this.uidSignature;
@@ -420,13 +485,19 @@ export class LoginClient {
     localStorage.setItem('uid', this.uid);
     localStorage.setItem('uidSig', this.uidSig);
     localStorage.setItem('uidSignature', this.uidSignature);
-    console.info("finalizeRegistrationApi response: ", res, this.uid, this.uidSig, this.uidSignature)
+    console.info(
+      'finalizeRegistrationApi response: ',
+      res,
+      this.uid,
+      this.uidSig,
+      this.uidSignature,
+    );
     return res;
   }
 
   private genLoggedInToken(): boolean {
     let isSuccess = false;
-    document.cookie.split(';').forEach(cookie => {
+    document.cookie.split(';').forEach((cookie) => {
       const [name, value] = cookie.trim().split('=');
       if (name && name.startsWith('glt_4_') && value) {
         this.finalRegistrationToken = value;
@@ -437,36 +508,37 @@ export class LoginClient {
   }
 
   private isLoggedIn(): boolean {
-    this.genLoggedInToken()
+    this.genLoggedInToken();
     return !!this.finalRegistrationToken;
   }
 
   private async fetchUidSigAndSignature(): Promise<void> {
-    return this.axios.request({
-      url: "https://www.pokemoncenter-online.com/on/demandware.store/Sites-POL-Site/ja_JP/Account-Login",
-      method: "POST",
-      params: {
-        rurl: '1'
-      },
-      headers: {
-        accept: 'application/json, text/javascript, */*; q=0.01',
-        'accept-language': 'zh-CN,zh;q=0.9',
-        'content-type': 'application/x-www-form-urlencoded',
-      },
-      data: {
-        csrf_token: this.csrfToken,
-        apiUidSignatureUid: this.uid,
-        apiUidSignatureUIDSignature: this.uidSignature,
-        apiUidSignaturesignatureTimestamp: Math.floor(Date.now() / 1000),
-      },
-    })
-      .then(res => {
+    return this.axios
+      .request({
+        url: 'https://www.pokemoncenter-online.com/on/demandware.store/Sites-POL-Site/ja_JP/Account-Login',
+        method: 'POST',
+        params: {
+          rurl: '1',
+        },
+        headers: {
+          accept: 'application/json, text/javascript, */*; q=0.01',
+          'accept-language': 'zh-CN,zh;q=0.9',
+          'content-type': 'application/x-www-form-urlencoded',
+        },
+        data: {
+          csrf_token: this.csrfToken,
+          apiUidSignatureUid: this.uid,
+          apiUidSignatureUIDSignature: this.uidSignature,
+          apiUidSignaturesignatureTimestamp: Math.floor(Date.now() / 1000),
+        },
+      })
+      .then((res) => {
         console.log('[UID签名] genUidSigAndSignature 响应:', res.data);
       })
       .catch((error) => {
         console.error('[UID签名] genUidSigAndSignature 请求失败:', error);
         throw error;
-      })
+      });
   }
 
   public async login(): Promise<boolean> {
@@ -483,26 +555,31 @@ export class LoginClient {
       await this.visitAccountWebSdkBootstrapApi();
       // await TaskManager.updateStatus('[登录] 获取 SSO Cookies');
       // await this.visitSSOPage();
-      await this.visitLarkbileometJS()
+      await this.visitLarkbileometJS();
       await TaskManager.updateStatus('[登录] Cookies 环境准备完成');
-
 
       await TaskManager.updateStatus('[验证码] 开始解决 reCaptcha');
       const startResolveTime = Date.now();
 
       // 从配置中获取验证码服务类型，默认为 'capmonster'
       const captchaService = this.taskInfo.captchaService || 'capmonster';
-      const captchaToken = await this.resolveCaptcha(BASE_DOMAIN_URLS.LOGIN, captchaService);
-      console.info("🚀 ~ LoginClient ~ login ~ captchaToken:", captchaToken)
+      const captchaToken = await this.resolveCaptcha(
+        BASE_DOMAIN_URLS.LOGIN,
+        captchaService,
+      );
+      console.info('🚀 ~ LoginClient ~ login ~ captchaToken:', captchaToken);
 
       if (!captchaToken) {
-        await TaskManager.updateStatus(`[验证码] reCaptcha 解决失败 (${captchaService})`);
+        await TaskManager.updateStatus(
+          `[验证码] reCaptcha 解决失败 (${captchaService})`,
+        );
         return false;
       }
       this.setCaptchaToken(captchaToken);
       const resolveTime = ((Date.now() - startResolveTime) / 1000).toFixed(2);
-      await TaskManager.updateStatus(`[验证码] reCaptcha 解决完成 (${captchaService})，耗时: ${resolveTime}s`);
-
+      await TaskManager.updateStatus(
+        `[验证码] reCaptcha 解决完成 (${captchaService})，耗时: ${resolveTime}s`,
+      );
 
       await TaskManager.updateStatus(`[登录] 开始登录: ${this.username}`);
       const loginSuccess = await this.loginApi();
@@ -521,15 +598,13 @@ export class LoginClient {
       }
       await TaskManager.updateStatus('[认证] 初始化 TFA 成功');
 
-
       await TaskManager.updateStatus('[认证] 开始二次认证');
-      const twoAuthSuccess = await this.factor2AuthApi()
+      const twoAuthSuccess = await this.factor2AuthApi();
       if (!twoAuthSuccess) {
         await TaskManager.updateStatus('[认证] 二次认证失败');
         return false;
       }
       await TaskManager.updateStatus('[认证] 二次认证成功');
-
 
       await this.fetchMail2FaPage();
       const code = await this.getNewMail2AuthCode();
@@ -541,7 +616,7 @@ export class LoginClient {
       await TaskManager.updateStatus('[邮件验证码] 邮件验证码获取成功');
 
       await TaskManager.updateStatus('[邮件验证码] 开始提交邮件验证码');
-      const mail2faSuccess = await this.mail2faApi()
+      const mail2faSuccess = await this.mail2faApi();
       if (!mail2faSuccess) {
         await TaskManager.updateStatus('[邮件验证码] 邮件验证码认证失败');
         return false;
@@ -570,71 +645,96 @@ export class LoginClient {
   // ============================================================================
 
   public async fetchShippingPage(): Promise<void> {
-    const html = await fetch("https://www.pokemoncenter-online.com/order", {
+    const html = await fetch('https://www.pokemoncenter-online.com/order', {
       credentials: 'include',
       redirect: 'follow',
-    })
-      .then(res => res.text());
+    }).then((res) => res.text());
 
     // console.info("🚀 ~ LoginClient ~ fetchShippingPage ~ html:", html)
-    const document = new DOMParser().parseFromString(html, "text/html");
-    this.csrfToken = document.querySelector('input[name="csrf_token"]')?.getAttribute('value') || this.csrfToken;
-    const dgftTokenApiKey = document.querySelector('input[id="dgftTokenApiKey"]')?.getAttribute('value') || this.dgftTokenApiKey;
-    console.info("dgftTokenApiKey: ", dgftTokenApiKey)
-    this.dgftTokenApiKey = dgftTokenApiKey
-    dgftTokenApiKey && localStorage.setItem('dgftTokenApiKey', dgftTokenApiKey);
+    const document = new DOMParser().parseFromString(html, 'text/html');
+    this.csrfToken =
+      document
+        .querySelector('input[name="csrf_token"]')
+        ?.getAttribute('value') || this.csrfToken;
+    const dgftTokenApiKey =
+      document
+        .querySelector('input[id="dgftTokenApiKey"]')
+        ?.getAttribute('value') || this.dgftTokenApiKey;
+    console.info('dgftTokenApiKey: ', dgftTokenApiKey);
+    if (dgftTokenApiKey) {
+      this.dgftTokenApiKey = dgftTokenApiKey;
+      localStorage.setItem('dgftTokenApiKey', dgftTokenApiKey);
+    }
   }
 
   private async fetchPaymentPage(): Promise<void> {
-    return await fetch("https://www.pokemoncenter-online.com/payment/", {
+    return await fetch('https://www.pokemoncenter-online.com/payment/', {
       credentials: 'include',
       redirect: 'follow',
     })
-      .then(res => res.text())
-      .then(html => {
-        const document = new DOMParser().parseFromString(html, "text/html");
-        const dgftTokenApiKey = document.querySelector('input[id="dgftTokenApiKey"]')?.getAttribute('value') || this.dgftTokenApiKey;
-        console.info("dgftTokenApiKey: ", dgftTokenApiKey)
-        this.dgftTokenApiKey = dgftTokenApiKey
-        dgftTokenApiKey && localStorage.setItem('dgftTokenApiKey', dgftTokenApiKey);
+      .then((res) => res.text())
+      .then((html) => {
+        const document = new DOMParser().parseFromString(html, 'text/html');
+        const dgftTokenApiKey =
+          document
+            .querySelector('input[id="dgftTokenApiKey"]')
+            ?.getAttribute('value') || this.dgftTokenApiKey;
+        console.info('dgftTokenApiKey: ', dgftTokenApiKey);
+        if (dgftTokenApiKey) {
+          this.dgftTokenApiKey = dgftTokenApiKey;
+          localStorage.setItem('dgftTokenApiKey', dgftTokenApiKey);
+        }
       })
-      .catch(err => {
-        console.error("a error: ", err)
-      })
+      .catch((err) => {
+        console.error('a error: ', err);
+      });
   }
   private async removeHistoryProduct(pid: string, uuid: string): Promise<void> {
-    const urlInfo = new URL("https://www.pokemoncenter-online.com/on/demandware.store/Sites-POL-Site/ja_JP/Cart-RemoveProductLineItem");
+    const urlInfo = new URL(
+      'https://www.pokemoncenter-online.com/on/demandware.store/Sites-POL-Site/ja_JP/Cart-RemoveProductLineItem',
+    );
     urlInfo.searchParams.append('pid', pid);
     urlInfo.searchParams.append('uuid', uuid);
     await this.axios.request({
       url: urlInfo.toString(),
-      method: "GET",
-      maxRedirects: 5
+      method: 'GET',
+      maxRedirects: 5,
     });
   }
 
   public async removeHistoryProducts(): Promise<void> {
-    console.info("开始移除购物车历史产品")
-    return await fetch("https://www.pokemoncenter-online.com/cart/", {
+    console.info('开始移除购物车历史产品');
+    return await fetch('https://www.pokemoncenter-online.com/cart/', {
       credentials: 'include',
       redirect: 'follow',
     })
-      .then(res => res.text())
+      .then((res) => res.text())
       .then(async (html) => {
         // console.info("removeHistoryProducts response: ", html)
-        const document = new DOMParser().parseFromString(html, "text/html");
-        const removeProductsLiElement = Array.from(document.querySelectorAll('ul.cart-list li'))
+        const document = new DOMParser().parseFromString(html, 'text/html');
+        const removeProductsLiElement = Array.from(
+          document.querySelectorAll('ul.cart-list li'),
+        );
         for (const removeProductLiElement of removeProductsLiElement) {
-          const pid = removeProductLiElement.querySelector('.product-name')?.getAttribute('data-pid') || '';
+          const pid =
+            removeProductLiElement
+              .querySelector('.product-name')
+              ?.getAttribute('data-pid') || '';
           if (!pid) continue;
-          const uuid = removeProductLiElement.classList.value.replace('uuid-', '');
-          console.info("🚀 ~ LoginClient ~ removeHistoryProducts ~ uuid:", uuid)
+          const uuid = removeProductLiElement.classList.value.replace(
+            'uuid-',
+            '',
+          );
+          console.info(
+            '🚀 ~ LoginClient ~ removeHistoryProducts ~ uuid:',
+            uuid,
+          );
           if (!uuid) continue;
           await this.removeHistoryProduct(pid, uuid);
           await TaskManager.updateStatus(`[购物车] 移除购物车产品 ${pid} 成功`);
           await sleep(10000);
         }
-      })
+      });
   }
 
   /**
@@ -646,11 +746,13 @@ export class LoginClient {
       return false;
     }
 
-    await TaskManager.updateStatus(`[购物车] 开始添加到购物车 ${this.taskInfo.productId}`);
+    await TaskManager.updateStatus(
+      `[购物车] 开始添加到购物车 ${this.taskInfo.productId}`,
+    );
 
     try {
       const response = await this.axios.request({
-        url: "https://www.pokemoncenter-online.com/on/demandware.store/Sites-POL-Site/ja_JP/Cart-AddProduct",
+        url: 'https://www.pokemoncenter-online.com/on/demandware.store/Sites-POL-Site/ja_JP/Cart-AddProduct',
         method: 'POST',
         headers: {
           'content-type': 'application/x-www-form-urlencoded',
@@ -658,18 +760,24 @@ export class LoginClient {
         data: {
           dwfrm_product_fundamental_pid: String(this.taskInfo.productId),
           dwfrm_product_fundamental_quantity: '1',
-        }
+        },
       });
-      console.info("addToCart response: ", response)
-      if (Array.isArray(response.data?.cart?.items) && response.data.cart.items.length > 0) {
+      console.info('addToCart response: ', response);
+      if (
+        Array.isArray(response.data?.cart?.items) &&
+        response.data.cart.items.length > 0
+      ) {
         await TaskManager.updateStatus('[购物车] 添加到购物车成功');
         return true;
       }
       await TaskManager.updateStatus('[购物车] 添加到购物车失败');
       return false;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      await TaskManager.updateStatus(`[购物车] 添加到购物车失败: ${errorMessage}`);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      await TaskManager.updateStatus(
+        `[购物车] 添加到购物车失败: ${errorMessage}`,
+      );
       return false;
     }
   }
@@ -700,35 +808,44 @@ export class LoginClient {
       dwfrm_shipping_shippingAddress_addressFields_addressId: '__dummy',
       dwfrm_shipping_shippingAddress_addressFields_lastName: kanaName,
       dwfrm_shipping_shippingAddress_addressFields_nameKana: kanaName,
-      dwfrm_shipping_shippingAddress_addressFields_postalCode: this.taskInfo.zipCode,
-      dwfrm_shipping_shippingAddress_addressFields_states_stateCode: this.taskInfo.state,
+      dwfrm_shipping_shippingAddress_addressFields_postalCode:
+        this.taskInfo.zipCode,
+      dwfrm_shipping_shippingAddress_addressFields_states_stateCode:
+        this.taskInfo.state,
       dwfrm_shipping_shippingAddress_addressFields_city: this.taskInfo.city,
-      dwfrm_shipping_shippingAddress_addressFields_address1: jaconv.toZen(this.taskInfo.address1),
-      dwfrm_shipping_shippingAddress_addressFields_address2: jaconv.toZen(this.taskInfo.address2),
-      dwfrm_shipping_shippingAddress_addressFields_phone: this.taskInfo.phoneNumber,
+      dwfrm_shipping_shippingAddress_addressFields_address1: jaconv.toZen(
+        this.taskInfo.address1,
+      ),
+      dwfrm_shipping_shippingAddress_addressFields_address2: jaconv.toZen(
+        this.taskInfo.address2,
+      ),
+      dwfrm_shipping_shippingAddress_addressFields_phone:
+        this.taskInfo.phoneNumber,
       dwfrm_shipping_shippingAddress_timetable_hasRequest: 'false',
       dwfrm_shipping_shippingAddress_timetable_dateRange: 'unspecified',
       dwfrm_shipping_shippingAddress_timetable_timeRange: '0',
       csrf_token: this.csrfToken,
-    }
+    };
 
     await TaskManager.updateStatus('[配送] 提交配送信息中...');
 
     try {
-      const response = await this.axios.request(
-        {
-          url: "https://www.pokemoncenter-online.com/on/demandware.store/Sites-POL-Site/ja_JP/CheckoutShippingServices-SubmitShipping",
-          method: 'POST',
-          headers: {
-            'content-type': 'application/x-www-form-urlencoded',
-          },
-          data: data,
-        });
+      const response = await this.axios.request({
+        url: 'https://www.pokemoncenter-online.com/on/demandware.store/Sites-POL-Site/ja_JP/CheckoutShippingServices-SubmitShipping',
+        method: 'POST',
+        headers: {
+          'content-type': 'application/x-www-form-urlencoded',
+        },
+        data: data,
+      });
 
-      console.info("submitShipping response: ", response)
-      const { fieldErrors } = response.data || {}
+      console.info('submitShipping response: ', response);
+      const { fieldErrors } = response.data || {};
       if (Array.isArray(fieldErrors) && fieldErrors.length > 0) {
-        throw new Error(`[配送] 配送信息字段有误 ${fieldErrors.join('\n')}`)
+        await TaskManager.errorComplete(
+          `[配送] 配送信息字段有误 ${fieldErrors.join('\n')}`,
+        );
+        return;
       }
       await TaskManager.updateStatus('[配送] 配送信息提交完成');
       return true;
@@ -751,7 +868,7 @@ export class LoginClient {
     await TaskManager.updateStatus('[支付] 开始提交信用卡信息');
 
     const response = await this.axios.request({
-      url: "https://api3.veritrans.co.jp/4gtoken",
+      url: 'https://api3.veritrans.co.jp/4gtoken',
       method: 'POST',
       headers: {
         'content-type': 'application/json; charset=utf-8',
@@ -759,25 +876,28 @@ export class LoginClient {
       data: {
         token_api_key: this.dgftTokenApiKey,
         card_number: this.taskInfo.cardNumber,
-        card_expire: this.taskInfo.expiredMonth + '/' + this.taskInfo.expiredYear,
+        card_expire:
+          this.taskInfo.expiredMonth + '/' + this.taskInfo.expiredYear,
         security_code: this.taskInfo.securityCode,
         cardholder_name: this.taskInfo.cardName,
-        lang: "ja"
+        lang: 'ja',
       },
     });
-    console.info("submitFirstPaymentCreditCard response: ", response)
+    console.info('submitFirstPaymentCreditCard response: ', response);
 
     if (response.data.code === 'success') {
       await TaskManager.updateStatus(`[支付] 提交信用卡信息成功`);
     } else {
-      await TaskManager.updateStatus(`[支付] 提交信用卡信息失败: ${response.data.message}`);
+      await TaskManager.updateStatus(
+        `[支付] 提交信用卡信息失败: ${response.data.message}`,
+      );
       throw new Error(`[支付] 提交信用卡信息失败: ${response.data.message}`);
     }
   }
 
   /**
    * 下单流程提交使用的信用卡
-  */
+   */
   private async submitFirstPaymentCreditCardApi(): Promise<void> {
     if (!this.csrfToken) {
       await this.fetchShippingPage();
@@ -787,21 +907,21 @@ export class LoginClient {
       }
     }
     return this.axios.request({
-      url: "https://www.pokemoncenter-online.com/on/demandware.store/Sites-POL-Site/ja_JP/CheckoutServices-SubmitPayment",
-      method: "POST",
+      url: 'https://www.pokemoncenter-online.com/on/demandware.store/Sites-POL-Site/ja_JP/CheckoutServices-SubmitPayment',
+      method: 'POST',
       headers: {
         'content-type': 'application/x-www-form-urlencoded',
       },
       data: {
         csrf_token: this.csrfToken,
-        dwfrm_billing_paymentMethod: "CREDIT_CARD",
-        maskedNewCardNumber: "",
-        creditCardtoken: "",
-        dwfrm_billing_creditCardFields_cardType: "",
-        dwfrm_billing_creditCardFields_expirationMonth: "",
-        dwfrm_billing_creditCardFields_expirationYear: "",
+        dwfrm_billing_paymentMethod: 'CREDIT_CARD',
+        maskedNewCardNumber: '',
+        creditCardtoken: '',
+        dwfrm_billing_creditCardFields_cardType: '',
+        dwfrm_billing_creditCardFields_expirationMonth: '',
+        dwfrm_billing_creditCardFields_expirationYear: '',
       },
-    })
+    });
   }
 
   public async getAccountInfo(): Promise<any> {
@@ -810,27 +930,30 @@ export class LoginClient {
       return null;
     }
     const response = await this.axios.request({
-      url: "https://id.pokemoncenter-online.com/accounts.getAccountInfo",
+      url: 'https://id.pokemoncenter-online.com/accounts.getAccountInfo',
       method: 'POST',
       headers: {
         'content-type': 'application/x-www-form-urlencoded',
       },
       data: {
-        include: "data,",
-        lang: "ja",
+        include: 'data,',
+        lang: 'ja',
         APIKey: GIGYA_API_KEY,
-        sdk: "js_latest",
+        sdk: 'js_latest',
         login_token: this.login_token,
-        authMode: "cookie",
-        pageURL: "https://www.pokemoncenter-online.com/order/?stage=placeOrder#placeOrder",
-        sdkBuild: "18148",
-        format: "json"
+        authMode: 'cookie',
+        pageURL:
+          'https://www.pokemoncenter-online.com/order/?stage=placeOrder#placeOrder',
+        sdkBuild: '18148',
+        format: 'json',
       },
     });
-    console.info("getAccountInfo response: ", response)
+    console.info('getAccountInfo response: ', response);
     const { errorMessage, errorCode, errorDetails } = response.data;
     if (errorCode > 10000) {
-      throw new Error(`[获取账号信息] 获取账号信息失败: ${errorDetails || errorMessage}`);
+      throw new Error(
+        `[获取账号信息] 获取账号信息失败: ${errorDetails || errorMessage}`,
+      );
     }
     return response.data;
   }
@@ -844,33 +967,41 @@ export class LoginClient {
   }
 
   public async getCartInfo(): Promise<any> {
-    return await fetch("https://www.pokemoncenter-online.com/cart/", {
+    return await fetch('https://www.pokemoncenter-online.com/cart/', {
       credentials: 'include',
       redirect: 'follow',
-    }).then(res => res.text())
+    })
+      .then((res) => res.text())
       .then(async (html) => {
         // console.info("getCartInfo response: ", html)
-        const document = new DOMParser().parseFromString(html, "text/html");
-        const errorMessage = document.querySelector('.error-message')?.textContent || '';
+        const document = new DOMParser().parseFromString(html, 'text/html');
+        const errorMessage =
+          document.querySelector('.error-message')?.textContent || '';
         if (errorMessage) {
-          throw new Error(`[获取购物车信息] 获取购物车信息失败: ${errorMessage}`);
+          throw new Error(
+            `[获取购物车信息] 获取购物车信息失败: ${errorMessage}`,
+          );
         }
-      })
+      });
   }
 
   public async getMyPageInfo(): Promise<any> {
-    return await fetch("https://www.pokemoncenter-online.com/mypage/", {
+    return await fetch('https://www.pokemoncenter-online.com/mypage/', {
       credentials: 'include',
       redirect: 'follow',
-    }).then(res => res.text())
-      .then(html => {
+    })
+      .then((res) => res.text())
+      .then((html) => {
         // console.info("getMyPageInfo response: ", html)
-        const document = new DOMParser().parseFromString(html, "text/html");
-        this.csrfToken = document.querySelector('input[name="csrf_token"]')?.getAttribute('value') || this.csrfToken;
+        const document = new DOMParser().parseFromString(html, 'text/html');
+        this.csrfToken =
+          document
+            .querySelector('input[name="csrf_token"]')
+            ?.getAttribute('value') || this.csrfToken;
       })
-      .catch(err => {
-        console.error("getMyPageInfo error: ", err)
-      })
+      .catch((err) => {
+        console.error('getMyPageInfo error: ', err);
+      });
   }
 
   /**
@@ -880,8 +1011,8 @@ export class LoginClient {
     try {
       await this.getMyPageInfo();
       await this.getCartInfo();
-      await this.fetchShippingPage()
-      if (!this.dgftTokenApiKey) await this.fetchPaymentPage()
+      await this.fetchShippingPage();
+      if (!this.dgftTokenApiKey) await this.fetchPaymentPage();
       // 提交配送信息
       await this.submitShipping();
 
@@ -892,7 +1023,7 @@ export class LoginClient {
           await this.submitFirstPaymentCreditCard();
           submitFirstPaymentCreditCardSuccess = true;
         } catch (error) {
-          if (error?.message?.includes('没有找到')) break
+          if (error?.message?.includes('没有找到')) break;
           continue;
         }
         break;
@@ -908,12 +1039,14 @@ export class LoginClient {
 
       // 支付流程
       if (submitFirstPaymentCreditCardSuccess) {
-        location.href = "https://www.pokemoncenter-online.com/order/?stage=placeOrder";
+        location.href =
+          'https://www.pokemoncenter-online.com/order/?stage=placeOrder';
         return;
       }
       await TaskManager.error('[订单流程] 订单流程失败');
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       await TaskManager.error(`[订单流程] 处理失败: ${errorMessage}`);
     }
   }
