@@ -1,9 +1,21 @@
-import { ipcMain } from 'electron';
+import { ipcMain, BrowserWindow, session } from 'electron';
 import { ProxyPoolEntity } from '@/orm/entities/proxy-pool';
 import { AppDataSource } from '@/orm/data-source';
 import { ensureDataSourceReady } from './utils';
+import { parseProxyString, setupProxyForSession, resetSessionProxy } from '@/main/windows/browser/browser/common';
 
 export function registerProxyPoolHandlers(ipcMain: typeof import('electron').ipcMain) {
+  // 移除可能存在的旧处理器，避免重复注册
+  ipcMain.removeHandler('get-proxy-pool');
+  ipcMain.removeHandler('add-proxy-to-pool');
+  ipcMain.removeHandler('add-proxies-to-pool');
+  ipcMain.removeHandler('update-proxy-in-pool');
+  ipcMain.removeHandler('delete-proxy-from-pool');
+  ipcMain.removeHandler('delete-proxies-from-pool');
+  ipcMain.removeHandler('get-random-proxy-from-pool');
+  ipcMain.removeHandler('check-proxy-status');
+  ipcMain.removeHandler('check-proxies-status');
+
   /**
    * 获取代理池列表
    */
@@ -149,6 +161,209 @@ export function registerProxyPoolHandlers(ipcMain: typeof import('electron').ipc
     // 随机选择一个
     const randomIndex = Math.floor(Math.random() * proxies.length);
     return proxies[randomIndex] || null;
+  });
+
+  /**
+   * 内部函数：检查单个代理状态
+   */
+  async function checkSingleProxy(proxyString: string): Promise<{
+    success: boolean;
+    latency?: number;
+    error?: string;
+  }> {
+    const testUrl = 'http://httpbin.org/ip'; // 测试URL
+    const timeout = 10000; // 10秒超时
+    const partition = `temp-proxy-check-${Date.now()}-${Math.random()}`;
+    
+    let testWindow: BrowserWindow | null = null;
+    
+    try {
+      // 解析代理字符串
+      const proxyInfo = parseProxyString(proxyString);
+      if (!proxyInfo) {
+        return {
+          success: false,
+          error: '代理格式错误',
+        };
+      }
+
+      // 创建临时session用于测试
+      const testSession = session.fromPartition(partition);
+      
+      // 设置代理
+      await new Promise<void>((resolve, reject) => {
+        const proxyRules = `http=${proxyInfo.host}:${proxyInfo.port};https=${proxyInfo.host}:${proxyInfo.port}`;
+        testSession.setProxy({
+          mode: 'fixed_servers',
+          proxyRules: proxyRules,
+        }).then(() => {
+          resolve();
+        }).catch((err) => {
+          reject(new Error(`设置代理失败: ${err.message}`));
+        });
+      });
+
+      // 监听代理认证（如果需要用户名和密码）
+      if (proxyInfo.username && proxyInfo.password) {
+        testSession.setProxy({
+          mode: 'fixed_servers',
+          proxyRules: `http=${proxyInfo.host}:${proxyInfo.port};https=${proxyInfo.host}:${proxyInfo.port}`,
+        });
+        
+        // 监听登录事件以提供代理认证
+        testSession.on('login', (event, details, callback) => {
+          event.preventDefault();
+          callback(proxyInfo.username, proxyInfo.password);
+        });
+      }
+
+      // 创建隐藏的测试窗口
+      testWindow = new BrowserWindow({
+        width: 1,
+        height: 1,
+        show: false,
+        webPreferences: {
+          session: testSession,
+          nodeIntegration: false,
+          contextIsolation: true,
+        },
+      });
+
+      // 记录开始时间
+      const startTime = Date.now();
+
+      // 加载测试URL并等待响应
+      const result = await Promise.race([
+        new Promise<{ success: boolean; latency: number; error?: string }>((resolve) => {
+          let resolved = false;
+          
+          const timeoutId = setTimeout(() => {
+            if (!resolved) {
+              resolved = true;
+              resolve({
+                success: false,
+                latency: timeout,
+                error: '请求超时',
+              });
+            }
+          }, timeout);
+
+          testWindow!.webContents.once('did-finish-load', () => {
+            if (!resolved) {
+              resolved = true;
+              clearTimeout(timeoutId);
+              const latency = Date.now() - startTime;
+              resolve({
+                success: true,
+                latency,
+              });
+            }
+          });
+
+          testWindow!.webContents.once('did-fail-load', (_event, errorCode, errorDescription) => {
+            if (!resolved) {
+              resolved = true;
+              clearTimeout(timeoutId);
+              const latency = Date.now() - startTime;
+              resolve({
+                success: false,
+                latency,
+                error: `加载失败: ${errorDescription} (${errorCode})`,
+              });
+            }
+          });
+
+          // 开始加载
+          testWindow!.loadURL(testUrl);
+        }),
+        new Promise<{ success: boolean; latency: number; error: string }>((resolve) => {
+          setTimeout(() => {
+            resolve({
+              success: false,
+              latency: timeout,
+              error: '请求超时',
+            });
+          }, timeout);
+        }),
+      ]);
+
+      return result;
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    } finally {
+      // 清理资源
+      if (testWindow && !testWindow.isDestroyed()) {
+        testWindow.close();
+      }
+      
+      // 清理临时session
+      try {
+        const testSession = session.fromPartition(partition);
+        await resetSessionProxy(testSession);
+        await testSession.clearStorageData();
+      } catch (error) {
+        // 忽略清理错误
+        console.warn('清理测试session失败:', error);
+      }
+    }
+  }
+
+  /**
+   * 检查代理状态（IPC处理器）
+   */
+  ipcMain.handle('check-proxy-status', async (_event, proxyString: string) => {
+    return await checkSingleProxy(proxyString);
+  });
+
+  /**
+   * 批量检查代理状态
+   * @param proxyIds 代理ID数组，如果为空则检查所有启用的代理
+   * @returns 检查结果数组
+   */
+  ipcMain.handle('check-proxies-status', async (_event, proxyIds?: string[]) => {
+    await ensureDataSourceReady();
+    const repo = AppDataSource.getRepository(ProxyPoolEntity);
+
+    let proxies: ProxyPoolEntity[];
+    if (proxyIds && proxyIds.length > 0) {
+      proxies = await repo.find({
+        where: proxyIds.map(id => ({ id })),
+      });
+    } else {
+      proxies = await repo.find({
+        where: { enabled: true },
+      });
+    }
+
+    const results: Array<{
+      id: string;
+      proxy: string;
+      success: boolean;
+      latency?: number;
+      error?: string;
+    }> = [];
+
+    // 并发检查，但限制并发数
+    const concurrency = 5;
+    for (let i = 0; i < proxies.length; i += concurrency) {
+      const batch = proxies.slice(i, i + concurrency);
+      const batchResults = await Promise.all(
+        batch.map(async (proxy) => {
+          const result = await checkSingleProxy(proxy.proxy);
+          return {
+            id: proxy.id,
+            proxy: proxy.proxy,
+            ...result,
+          };
+        })
+      );
+      results.push(...batchResults);
+    }
+
+    return results;
   });
 }
 

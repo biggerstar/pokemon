@@ -3,6 +3,8 @@ import { globalMainPathParser } from '@/global/global-main-path-parser';
 import { BrowserWindow, Notification, screen, session } from 'electron';
 import { AppDataSource } from '@/orm/data-source';
 import { AccountEntity, TaskStatus } from '@/orm/entities/account';
+import { ProxyPoolEntity } from '@/orm/entities/proxy-pool';
+import { getConfigValue } from '@/main/ipc/pokemoncenter/captcha-config';
 import {
   clearBrowserData,
   parseProxyString,
@@ -19,6 +21,7 @@ interface TaskWindowInfo {
   account: AccountEntity;
   startTime: number;
   timeoutTimer?: NodeJS.Timeout; // 超时定时器
+  statusCheckInterval?: NodeJS.Timeout; // 状态检查定时器
   isClosing?: boolean; // 标记窗口是否正在关闭中，防止重复处理
 }
 
@@ -444,6 +447,7 @@ export class TaskQueueManager {
         account,
         startTime: Date.now(),
         timeoutTimer,
+        statusCheckInterval: undefined, // 将在 setupTaskCompletionListener 中设置
       };
 
       this.runningTasks.set(account.mail, taskInfo);
@@ -550,14 +554,42 @@ export class TaskQueueManager {
       },
     });
 
-    if (globalEnv.isDev) {
+    // 读取用户配置的开发者工具设置
+    const enableDevToolsConfig = (await getConfigValue('enable_dev_tools')) === 'true';
+    // 只有在配置允许且是开发环境时才打开开发者工具
+    if (globalEnv.isDev && enableDevToolsConfig) {
       window.webContents.openDevTools({ mode: 'right' });
     }
 
-    const proxyInfo =
-      this.enableProxy && account.data?.proxy
-        ? parseProxyString(account.data.proxy)
-        : null;
+    // 获取代理信息
+    let proxyString: string | undefined = undefined;
+    if (this.enableProxy) {
+      // 如果账号有指定代理，使用账号的代理
+      if (account.data?.proxy) {
+        proxyString = account.data.proxy;
+      } else {
+        // 如果账号没有指定代理，从代理池随机选择一个启用的代理
+        try {
+          const proxyRepo = AppDataSource.getRepository(ProxyPoolEntity);
+          const enabledProxies = await proxyRepo.find({
+            where: { enabled: true },
+          });
+
+          if (enabledProxies.length > 0) {
+            // 随机选择一个
+            const randomIndex = Math.floor(Math.random() * enabledProxies.length);
+            proxyString = enabledProxies[randomIndex]?.proxy;
+            console.log(`[createTaskWindow] 从代理池随机选择代理: ${proxyString}`);
+          } else {
+            console.warn('[createTaskWindow] 代理池中没有启用的代理');
+          }
+        } catch (error) {
+          console.error('[createTaskWindow] 从代理池获取代理失败:', error);
+        }
+      }
+    }
+
+    const proxyInfo = proxyString ? parseProxyString(proxyString) : null;
     const sessionKey = `task-window-${window.id}`;
     if (proxyInfo) {
       setupProxyForSession(
@@ -638,6 +670,73 @@ export class TaskQueueManager {
       event.preventDefault();
     });
 
+    // 监听 URL 导航，检测 chrome-error://chromewebdata
+    // 使用闭包保存 account.mail，避免依赖窗口映射
+    const accountMail = account.mail;
+    let chromeErrorHandled = false; // 防止重复处理
+    
+    const handleChromeError = async (url: string, source: string) => {
+      // 防止重复处理（多个事件可能同时触发）
+      if (chromeErrorHandled) {
+        console.log(`[createTaskWindow] chrome-error 已处理，跳过: ${accountMail}`);
+        return;
+      }
+      
+      // 检查窗口是否还存在
+      const currentTaskInfo = this.runningTasks.get(accountMail);
+      if (!currentTaskInfo || currentTaskInfo.window.isDestroyed() || currentTaskInfo.isClosing) {
+        console.log(`[createTaskWindow] 窗口已关闭或正在关闭，跳过 chrome-error 处理: ${accountMail}`);
+        return;
+      }
+      
+      chromeErrorHandled = true;
+      console.log(`[createTaskWindow] 检测到 chrome-error 页面 (${source}): ${url}, 账号: ${accountMail}`);
+      
+      // 更新任务状态为 ERROR
+      try {
+        const repo = AppDataSource.getRepository(AccountEntity);
+        const currentAccount = await repo.findOne({ where: { mail: accountMail } });
+        if (currentAccount) {
+          currentAccount.status = TaskStatus.ERROR;
+          currentAccount.statusText = '网络或者代理不可用';
+          await repo.save(currentAccount);
+        }
+      } catch (error) {
+        console.error(`[createTaskWindow] 更新任务状态失败:`, error);
+      }
+      
+      // 立即关闭窗口并重试
+      await this.requestCloseWindow(accountMail, true);
+    };
+    
+    const navigateListener = async (_event: Electron.Event, url: string) => {
+      if (url && url.includes('chrome-error://chromewebdata')) {
+        await handleChromeError(url, 'did-navigate');
+      }
+    };
+    
+    const failLoadListener = async (_event: Electron.Event, errorCode: number, errorDescription: string, validatedURL: string) => {
+      if (validatedURL && validatedURL.includes('chrome-error://chromewebdata')) {
+        await handleChromeError(validatedURL, 'did-fail-load');
+      }
+    };
+    
+    window.webContents.on('did-navigate', navigateListener);
+    window.webContents.on('did-fail-load', failLoadListener);
+    
+    // 在窗口关闭时移除监听器，防止内存泄漏
+    window.once('closed', () => {
+      try {
+        if (!window.webContents.isDestroyed()) {
+          window.webContents.removeListener('did-navigate', navigateListener);
+          window.webContents.removeListener('did-fail-load', failLoadListener);
+          console.log(`[createTaskWindow] 已移除 URL 监听器: ${accountMail}`);
+        }
+      } catch (error) {
+        console.warn(`[createTaskWindow] 移除 URL 监听器失败:`, error);
+      }
+    });
+
     // 设置账号信息的函数
     const setAccountMail = () => {
       window.webContents.send('set-current-account-mail', account.mail);
@@ -661,59 +760,83 @@ export class TaskQueueManager {
     account: AccountEntity,
     timeoutTimer: NodeJS.Timeout,
   ): void {
+    let statusCheckIntervalCleared = false; // 防止重复清理
+    const accountMail = account.mail;
+    
+    const clearAllTimers = () => {
+      if (!statusCheckIntervalCleared) {
+        statusCheckIntervalCleared = true;
+        clearInterval(statusCheckInterval);
+        clearTimeout(timeoutTimer);
+      }
+    };
+    
     const statusCheckInterval = setInterval(async () => {
       try {
-        if (!AppDataSource.isInitialized) return;
+        if (!AppDataSource.isInitialized) {
+          clearAllTimers();
+          return;
+        }
         if (window.isDestroyed()) {
-          clearInterval(statusCheckInterval);
-          // 清理超时定时器
-          clearTimeout(timeoutTimer);
+          clearAllTimers();
           return;
         }
         const repo = AppDataSource.getRepository(AccountEntity);
         const updatedAccount = await repo.findOne({
-          where: { mail: account.mail },
+          where: { mail: accountMail },
         });
         if (!updatedAccount) {
-          clearInterval(statusCheckInterval);
-          // 清理超时定时器
-          clearTimeout(timeoutTimer);
+          clearAllTimers();
           return;
         }
         if (updatedAccount.status === TaskStatus.DONE || updatedAccount.status === TaskStatus.ERROR) {
           // 检查窗口是否正在关闭中，避免重复调用 requestCloseWindow
-          const currentTaskInfo = this.runningTasks.get(account.mail);
+          const currentTaskInfo = this.runningTasks.get(accountMail);
           if (currentTaskInfo && currentTaskInfo.isClosing) {
-            console.log(`[TaskQueue] setupTaskCompletionListener 检测到状态变化，但窗口正在关闭中，跳过: ${account.mail}`);
+            console.log(`[TaskQueue] setupTaskCompletionListener 检测到状态变化，但窗口正在关闭中，跳过: ${accountMail}`);
+            clearAllTimers();
             return;
           }
           
-          clearInterval(statusCheckInterval);
-          clearTimeout(timeoutTimer);
+          clearAllTimers();
 
           const shouldCountRetry = updatedAccount.status === TaskStatus.ERROR;
           if (Notification.isSupported()) {
             const title = shouldCountRetry ? '任务失败' : '任务完成';
             const body = shouldCountRetry
-              ? `账号 ${account.mail} 的任务失败: ${updatedAccount.statusText || '未知错误'} (重试 ${this.getRetryCount(account.mail)}/${this.maxRetryCount})`
-              : `账号 ${account.mail} 的任务已完成`;
+              ? `账号 ${accountMail} 的任务失败: ${updatedAccount.statusText || '未知错误'} (重试 ${this.getRetryCount(accountMail)}/${this.maxRetryCount})`
+              : `账号 ${accountMail} 的任务已完成`;
             new Notification({ title, body, silent: false }).show();
           }
 
-          console.log(`[TaskQueue] setupTaskCompletionListener 检测到 ${updatedAccount.status}，调用 requestCloseWindow: ${account.mail}`);
-          await this.requestCloseWindow(account.mail, shouldCountRetry);
+          console.log(`[TaskQueue] setupTaskCompletionListener 检测到 ${updatedAccount.status}，调用 requestCloseWindow: ${accountMail}`);
+          await this.requestCloseWindow(accountMail, shouldCountRetry);
         }
       } catch (error) {
         console.error(`[TaskQueue] 检查任务状态失败:`, error);
+        // 出错时也清理定时器，避免继续运行
+        clearAllTimers();
       }
     }, 2000);
 
-    window.on('closed', async () => {
-      console.log(`[TaskQueue] 窗口关闭事件触发: ${account.mail}`);
+    // 将定时器引用保存到 taskInfo 中，以便在窗口关闭时清理
+    const taskInfo = this.runningTasks.get(accountMail);
+    if (taskInfo) {
+      taskInfo.statusCheckInterval = statusCheckInterval;
+    }
 
-      clearInterval(statusCheckInterval);
-      // 清理超时定时器
-      clearTimeout(timeoutTimer);
+    let closedHandlerExecuted = false; // 防止 closed 事件被重复处理
+    window.on('closed', async () => {
+      // 防止重复处理 closed 事件
+      if (closedHandlerExecuted) {
+        console.warn(`[TaskQueue] 窗口关闭事件已处理，跳过重复处理: ${accountMail}`);
+        return;
+      }
+      closedHandlerExecuted = true;
+      
+      console.log(`[TaskQueue] 窗口关闭事件触发: ${accountMail}`);
+
+      clearAllTimers();
 
       // 在窗口关闭时，先保存 webContents 的引用和 ID（如果还存在）
       const windowId = window.id;
@@ -909,13 +1032,16 @@ export class TaskQueueManager {
     try {
       if (!AppDataSource.isInitialized) return;
 
-      const repo = AppDataSource.getRepository(AccountEntity);
-      const account = await repo.findOne({ where: { mail: accountMail } });
-      if (account) {
-        account.status = status;
-        account.statusText = statusText;
-        await repo.save(account);
-      }
+      // 使用事务确保状态更新的原子性，防止并发更新导致的状态不一致
+      await AppDataSource.transaction(async (transactionalEntityManager) => {
+        const repo = transactionalEntityManager.getRepository(AccountEntity);
+        const account = await repo.findOne({ where: { mail: accountMail } });
+        if (account) {
+          account.status = status;
+          account.statusText = statusText;
+          await repo.save(account);
+        }
+      });
     } catch (error) {
       console.error(`[TaskQueue] 更新账号状态失败:`, error);
     }
@@ -927,15 +1053,20 @@ export class TaskQueueManager {
       // 清理已经完全关闭的窗口（无论是否在关闭处理中）
       // 如果窗口已销毁，说明已经关闭，应该清理
       if (taskInfo.window.isDestroyed()) {
-        // 清理超时定时器
+        // 清理所有定时器
         if (taskInfo.timeoutTimer) {
           clearTimeout(taskInfo.timeoutTimer);
+        }
+        if (taskInfo.statusCheckInterval) {
+          clearInterval(taskInfo.statusCheckInterval);
         }
         toDelete.push(accountMail);
         const windowId = taskInfo.window.id;
         if (this.windowToAccountMap.has(windowId)) {
           this.windowToAccountMap.delete(windowId);
         }
+        // 清理重试计数（如果窗口已销毁，说明任务已结束）
+        this.resetRetryCount(accountMail);
         console.log(`[TaskQueue] cleanupCompletedTasks 清理已关闭的窗口: ${accountMail}`);
       }
     }
@@ -949,9 +1080,12 @@ export class TaskQueueManager {
     this.taskQueue = [];
     const accountMails: string[] = [];
     this.runningTasks.forEach((taskInfo) => {
-      // 清理超时定时器
+      // 清理所有定时器
       if (taskInfo.timeoutTimer) {
         clearTimeout(taskInfo.timeoutTimer);
+      }
+      if (taskInfo.statusCheckInterval) {
+        clearInterval(taskInfo.statusCheckInterval);
       }
       if (!taskInfo.window.isDestroyed()) {
         // 只关闭窗口，让 closed 事件处理清理工作
@@ -959,9 +1093,12 @@ export class TaskQueueManager {
         taskInfo.window.close();
       }
       accountMails.push(taskInfo.account.mail);
+      // 清理重试计数
+      this.resetRetryCount(taskInfo.account.mail);
     });
     this.runningTasks.clear();
     this.windowToAccountMap.clear();
+    this.retryCountMap.clear(); // 清理所有重试计数
     this.isProcessing = false;
 
     if (AppDataSource.isInitialized && accountMails.length > 0) {
@@ -1038,9 +1175,12 @@ export class TaskQueueManager {
     for (const accountMail of accountMails) {
       const taskInfo = this.runningTasks.get(accountMail);
       if (taskInfo) {
-        // 清理超时定时器
+        // 清理所有定时器
         if (taskInfo.timeoutTimer) {
           clearTimeout(taskInfo.timeoutTimer);
+        }
+        if (taskInfo.statusCheckInterval) {
+          clearInterval(taskInfo.statusCheckInterval);
         }
         if (!taskInfo.window.isDestroyed()) {
           // 只关闭窗口，让 closed 事件处理清理工作
@@ -1052,6 +1192,8 @@ export class TaskQueueManager {
         if (taskInfo.window && !taskInfo.window.isDestroyed()) {
           this.windowToAccountMap.delete(taskInfo.window.id);
         }
+        // 清理重试计数
+        this.resetRetryCount(accountMail);
         stoppedCount++;
       }
       const index = this.taskQueue.findIndex((acc) => acc.mail === accountMail);

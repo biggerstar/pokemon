@@ -17,7 +17,7 @@ const CONFIG_KEYS = {
   ENABLE_DEV_TOOLS: 'enable_dev_tools',
 } as const;
 
-async function getConfigValue(key: string): Promise<string> {
+export async function getConfigValue(key: string): Promise<string> {
   await ensureDataSourceReady();
   const repo = AppDataSource.getRepository(AppConfigEntity);
   const config = await repo.findOne({ where: { key } });

@@ -129,6 +129,12 @@ const __API__ = {
   getRandomProxyFromPool() {
     return ipcRenderer.invoke('get-random-proxy-from-pool');
   },
+  checkProxyStatus(proxy: string) {
+    return ipcRenderer.invoke('check-proxy-status', proxy);
+  },
+  checkProxiesStatus(proxyIds?: string[]) {
+    return ipcRenderer.invoke('check-proxies-status', proxyIds);
+  },
   // 打码平台配置相关 API
   getCaptchaConfig() {
     return ipcRenderer.invoke('get-captcha-config');

@@ -1,6 +1,7 @@
-import { ipcMain } from 'electron';
+import { ipcMain, WebContents } from 'electron';
 import { AccountEntity, TaskStatus } from '@/orm/entities/account';
 import { AppDataSource } from '@/orm/data-source';
+import { TaskQueueManager } from '@/main/windows/browser/browser';
 import { ensureDataSourceReady } from './utils';
 import { initializeAccountStatus } from './account-management';
 
@@ -220,5 +221,81 @@ export function registerTaskManagementHandlers(ipcMain: typeof import('electron'
       throw new Error(`Failed to reset accounts status: ${err.message}`);
     }
   });
+
+  /**
+   * 通过窗口更新任务状态（用于 chrome-error 页面等无法使用 localStorage 的场景）
+   * @param statusText 状态文本描述
+   * @param status 新状态（字符串，默认为 'ERROR'）
+   * @param shouldCloseWindow 是否关闭窗口（默认为 false）
+   */
+  ipcMain.handle(
+    'update-task-status-by-window',
+    async (event: Electron.IpcMainInvokeEvent, statusText: string, status: string = 'ERROR', shouldCloseWindow: boolean = false) => {
+      await ensureDataSourceReady();
+
+      try {
+        // 通过 event.sender 获取 webContents，然后找到对应的窗口
+        const { BrowserWindow } = await import('electron');
+        const webContents = event.sender;
+        const window = BrowserWindow.fromWebContents(webContents);
+        
+        if (!window || window.isDestroyed()) {
+          throw new Error('无法找到对应的窗口');
+        }
+
+        const taskQueue = TaskQueueManager.getInstance();
+        
+        // 通过窗口 ID 获取账号 mail
+        const accountMail = taskQueue.getAccountMailByWindowId(window.id);
+        
+        if (!accountMail) {
+          throw new Error(`无法找到窗口 ${window.id} 对应的账号`);
+        }
+
+        // 验证并转换状态
+        const taskStatus = status as TaskStatus;
+        if (!Object.values(TaskStatus).includes(taskStatus)) {
+          throw new Error(
+            `Invalid status: ${status}. Must be one of: ${Object.values(TaskStatus).join(', ')}`
+          );
+        }
+
+        // 更新任务状态
+        const repo = AppDataSource.getRepository(AccountEntity);
+        const account = await repo.findOneBy({ mail: accountMail });
+
+        if (!account) {
+          throw new Error(`账号不存在: ${accountMail}`);
+        }
+
+        const oldStatus = account.status;
+        account.status = taskStatus;
+        account.statusText = statusText || '';
+        await repo.save(account);
+
+        console.log(
+          `[update-task-status-by-window] 窗口 ${window.id} -> 账号 ${accountMail}: ${oldStatus} -> ${taskStatus} (${statusText})`
+        );
+
+        // 如果需要关闭窗口，调用 TaskQueueManager 的 requestCloseWindow
+        if (shouldCloseWindow) {
+          await taskQueue.requestCloseWindow(accountMail, true);
+          console.log(`[update-task-status-by-window] 已请求关闭窗口: ${accountMail}`);
+        }
+
+        return {
+          success: true,
+          mail: accountMail,
+          oldStatus,
+          newStatus: taskStatus,
+          statusText,
+        };
+      } catch (error: unknown) {
+        const err = error as Error;
+        console.error('[update-task-status-by-window] Error:', error);
+        throw new Error(`Failed to update task status by window: ${err.message}`);
+      }
+    }
+  );
 }
 

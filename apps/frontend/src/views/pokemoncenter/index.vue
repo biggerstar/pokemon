@@ -72,9 +72,10 @@ const autoDetectedHeaders = ref<string[]>([]);
 const maxConcurrency = ref(10);
 const taskModalVisible = ref(false);
 const proxyPoolModalVisible = ref(false);
-const proxyPoolList = ref<Array<{ id: string; proxy: string; name?: string; enabled: boolean; created_time: Date; updated_time: Date }>>([]);
+const proxyPoolList = ref<Array<{ id: string; proxy: string; name?: string; enabled: boolean; created_time: Date; updated_time: Date; checkStatus?: 'checking' | 'success' | 'failed'; checkLatency?: number; checkError?: string }>>([]);
 const newProxyText = ref('');
 const newProxyName = ref('');
+const isCheckingProxies = ref(false);
 const captchaConfigModalVisible = ref(false);
 const capmonsterToken = ref('');
 const twoCaptchaToken = ref('');
@@ -815,6 +816,85 @@ function openProxyPoolModal() {
   fetchProxyPool();
 }
 
+// 检查单个代理状态
+async function handleCheckProxy(proxy: any) {
+  const proxyItem = proxyPoolList.value.find(p => p.id === proxy.id);
+  if (!proxyItem) return;
+  
+  proxyItem.checkStatus = 'checking';
+  proxyItem.checkLatency = undefined;
+  proxyItem.checkError = undefined;
+  
+  try {
+    const result = await __API__.checkProxyStatus(proxy.proxy);
+    proxyItem.checkStatus = result.success ? 'success' : 'failed';
+    proxyItem.checkLatency = result.latency;
+    proxyItem.checkError = result.error;
+    
+    if (result.success) {
+      message.success(`代理检查成功，延迟: ${result.latency}ms`);
+    } else {
+      message.error(`代理检查失败: ${result.error || '未知错误'}`);
+    }
+  } catch (error: any) {
+    proxyItem.checkStatus = 'failed';
+    proxyItem.checkError = error.message || '检查失败';
+    message.error('检查代理失败: ' + error.message);
+  }
+}
+
+// 一键检查所有启用的代理
+async function handleCheckAllProxies() {
+  if (isCheckingProxies.value) return;
+  
+  const enabledProxies = proxyPoolList.value.filter(p => p.enabled);
+  if (enabledProxies.length === 0) {
+    message.warn('没有启用的代理需要检查');
+    return;
+  }
+  
+  isCheckingProxies.value = true;
+  
+  // 重置所有代理的检查状态
+  proxyPoolList.value.forEach(proxy => {
+    if (proxy.enabled) {
+      proxy.checkStatus = 'checking';
+      proxy.checkLatency = undefined;
+      proxy.checkError = undefined;
+    }
+  });
+  
+  try {
+    const proxyIds = enabledProxies.map(p => p.id);
+    const results = await __API__.checkProxiesStatus(proxyIds);
+    
+    // 更新检查结果
+    results.forEach(result => {
+      const proxyItem = proxyPoolList.value.find(p => p.id === result.id);
+      if (proxyItem) {
+        proxyItem.checkStatus = result.success ? 'success' : 'failed';
+        proxyItem.checkLatency = result.latency;
+        proxyItem.checkError = result.error;
+      }
+    });
+    
+    const successCount = results.filter(r => r.success).length;
+    const failCount = results.length - successCount;
+    message.success(`代理检查完成: ${successCount} 个成功, ${failCount} 个失败`);
+  } catch (error: any) {
+    message.error('批量检查代理失败: ' + error.message);
+    // 将所有检查中的代理标记为失败
+    proxyPoolList.value.forEach(proxy => {
+      if (proxy.checkStatus === 'checking') {
+        proxy.checkStatus = 'failed';
+        proxy.checkError = '检查失败';
+      }
+    });
+  } finally {
+    isCheckingProxies.value = false;
+  }
+}
+
 // 打码平台配置管理相关函数
 async function fetchCaptchaConfig() {
   try {
@@ -965,6 +1045,9 @@ function openCaptchaConfigModal() {
       <div class="mb-4">
         <div class="flex justify-between items-center mb-2">
           <h3 class="text-lg font-semibold">代理列表 ({{ proxyPoolList.length }})</h3>
+          <Button type="primary" @click="handleCheckAllProxies" :loading="isCheckingProxies" :disabled="isCheckingProxies">
+            一键检查代理状态
+          </Button>
         </div>
         <div class="border rounded p-2 max-h-96 overflow-y-auto">
           <table class="w-full text-sm">
@@ -973,6 +1056,7 @@ function openCaptchaConfigModal() {
                 <th class="text-left p-2">名称</th>
                 <th class="text-left p-2">代理地址</th>
                 <th class="text-left p-2">状态</th>
+                <th class="text-left p-2">检查结果</th>
                 <th class="text-left p-2">操作</th>
               </tr>
             </thead>
@@ -986,6 +1070,29 @@ function openCaptchaConfigModal() {
                   </span>
                 </td>
                 <td class="p-2">
+                  <div v-if="proxy.checkStatus === 'checking'" class="text-blue-600">
+                    检查中...
+                  </div>
+                  <div v-else-if="proxy.checkStatus === 'success'" class="text-green-600">
+                    ✓ 可用
+                    <span v-if="proxy.checkLatency" class="text-xs text-gray-500 ml-1">
+                      ({{ proxy.checkLatency }}ms)
+                    </span>
+                  </div>
+                  <div v-else-if="proxy.checkStatus === 'failed'" class="text-red-600">
+                    ✗ 不可用
+                    <span v-if="proxy.checkError" class="text-xs text-gray-500 ml-1" :title="proxy.checkError">
+                      ({{ proxy.checkError.length > 20 ? proxy.checkError.substring(0, 20) + '...' : proxy.checkError }})
+                    </span>
+                  </div>
+                  <div v-else class="text-gray-400 text-xs">
+                    未检查
+                  </div>
+                </td>
+                <td class="p-2">
+                  <Button size="small" @click="handleCheckProxy(proxy)" :loading="proxy.checkStatus === 'checking'" class="mr-2">
+                    检查
+                  </Button>
                   <Button size="small" @click="handleToggleProxy(proxy)" class="mr-2">
                     {{ proxy.enabled ? '禁用' : '启用' }}
                   </Button>
@@ -995,7 +1102,7 @@ function openCaptchaConfigModal() {
                 </td>
               </tr>
               <tr v-if="proxyPoolList.length === 0">
-                <td colspan="4" class="p-4 text-center text-gray-400">暂无代理</td>
+                <td colspan="5" class="p-4 text-center text-gray-400">暂无代理</td>
               </tr>
             </tbody>
           </table>

@@ -48,6 +48,8 @@ declare global {
     deleteProxyFromPool(id: string): Promise<{ success: boolean; deleted: number }>
     deleteProxiesFromPool(ids: string[]): Promise<{ success: boolean; deleted: number }>
     getRandomProxyFromPool(): Promise<{ id: string; proxy: string; name?: string; enabled: boolean; created_time: Date; updated_time: Date } | null>
+    checkProxyStatus(proxy: string): Promise<{ success: boolean; latency?: number; error?: string }>
+    checkProxiesStatus(proxyIds?: string[]): Promise<Array<{ id: string; proxy: string; success: boolean; latency?: number; error?: string }>>
     // 打码平台配置相关 API
     getCaptchaConfig(): Promise<{ capmonsterToken: string; twoCaptchaToken: string; defaultService: 'capmonster' | '2captcha'; enableDevTools: boolean }>
     saveCaptchaConfig(capmonsterToken: string, twoCaptchaToken: string, defaultService: 'capmonster' | '2captcha', enableDevTools: boolean): Promise<{ success: boolean }>

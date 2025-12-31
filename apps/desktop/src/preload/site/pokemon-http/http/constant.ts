@@ -1,6 +1,3 @@
-export const TWO_CAPTCHA_API_KEY = "a7898708aca9afc902ae285d3ab6aadc";
-export const TWO_CAPTCHA_CAPMONSTER_API_KEY = "dfe24e37bf55f241992f71e566070598";
-
 export const SSO_KEY = '4_7NiPOgzmAtCo0ZGg-re9lg'
 
 export const POKEMONCENTER_RECAPTCHA_WEBSITE_KEY =

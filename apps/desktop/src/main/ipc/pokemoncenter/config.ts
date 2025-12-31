@@ -1,6 +1,4 @@
-// 2Captcha 配置
-export const TWO_CAPTCHA_API_KEY = 'a7898708aca9afc902ae285d3ab6aadc';
-export const TWO_CAPTCHA_CAPMONSTER_API_KEY = 'dfe24e37bf55f241992f71e566070598';
+// reCAPTCHA 网站密钥（固定值，不需要配置）
 export const POKEMONCENTER_RECAPTCHA_WEBSITE_KEY = '6Le9HlYqAAAAAJQtQcq3V_tdd73twiM4Rm2wUvn9';
 
 // 邮件验证码配置
