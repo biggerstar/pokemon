@@ -82,7 +82,6 @@ if (
 if (
   location.href.includes('https://www.pokemoncenter-online.com/order-complete/')
 ) {
-  // complete 方法会自动调用 close(false)，不需要手动关闭
   TaskManager.complete('下单成功!').catch((error) => {
     console.error('[browser] 完成任务失败:', error);
   });

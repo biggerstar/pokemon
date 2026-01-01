@@ -5,13 +5,19 @@ import { AccountEntity, TaskStatus } from "./entities/account";
 import { AppConfigEntity } from "./entities/app-config";
 import { ProductEntity } from "./entities/product";
 import { ProxyPoolEntity } from "./entities/proxy-pool";
+import { existsSync } from "fs";
+
+const databasePath = globalMainPathParser.resolveDB('pm');
+const databaseExists = existsSync(databasePath);
 
 // 配置SQLite数据源
+// 如果数据库文件不存在，临时启用 synchronize 创建表结构
+// 如果数据库文件已存在，禁用 synchronize 防止数据丢失
 export const AppDataSource = new DataSource({
   type: "sqlite",
-  database: globalMainPathParser.resolveDB('pm'), // SQLite数据库文件路径
+  database: databasePath, // SQLite数据库文件路径
   logging: false, // 启用日志
-  synchronize: true,
+  synchronize: !databaseExists, // 仅在数据库不存在时启用同步，防止已有数据丢失
   extra: {
     // 防止加载其他数据库驱动
     driver: "sqlite3"

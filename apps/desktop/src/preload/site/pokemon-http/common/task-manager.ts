@@ -125,28 +125,20 @@ export class TaskManager {
   }
 
   /**
-   * 更新任务状态
+   * 更新任务状态（安全版本：后端自动从窗口识别账号）
    * @param statusText 状态文本描述（可选，如果为空字符串、null 或 undefined，则不更新 statusText）
    * @param status 状态（可选，默认使用 PROCESSING）
-   * @param taskMail 任务邮箱（可选，默认使用当前任务）
    */
   static async updateStatus(
     statusText?: string | null,
     status?: string,
-    taskMail?: string,
   ): Promise<boolean> {
-    const mail = taskMail || this.get()?.mail;
-    if (!mail) {
-      console.warn('[TaskManager] 没有当前任务，无法更新状态');
-      return false;
-    }
-
     const finalStatus = status || 'PROCESSING';
 
     try {
+      // 不再传递 mail 参数，后端会从 event.sender 自动识别窗口对应的账号
       await ipcRenderer.invoke(
         'update-task-status',
-        mail,
         finalStatus,
         statusText,
       );
@@ -157,8 +149,8 @@ export class TaskManager {
         console.log(`[${finalStatus}]`);
       }
 
-      // 注意：不要在 updateStatus 中清除任务信息，因为 complete() 和 error() 需要任务信息来关闭窗口
-      // 清除任务信息的逻辑应该在 complete() 和 error() 中处理
+      // 注意：不要在 updateStatus 中清除任务信息，因为 complete() 和 errorComplete() 需要任务信息来关闭窗口
+      // 清除任务信息的逻辑应该在 complete() 和 errorComplete() 中处理
       return true;
     } catch (error) {
       console.error('[TaskManager] 更新状态失败:', error);
@@ -168,28 +160,23 @@ export class TaskManager {
 
   /**
    * 标记当前任务为完成
+   * complete 必须关闭窗口，并且不需要重试
    * @param statusText 状态文本（可选，如果为空字符串、null 或 undefined，则不更新 statusText）
    */
   static async complete(statusText?: string | null): Promise<boolean> {
-    // 先获取 mail，因为 updateStatus 可能会清除任务信息
-    const mail = this.getCurrentAccountMail() || this.get()?.mail;
+    // 更新状态为 DONE（后端会自动从窗口识别账号）
+    const result = await this.updateStatus(statusText, 'DONE');
+    console.log(`[TaskManager] complete 结果: ${result}`);
 
-    if (!mail) {
-      console.warn('[TaskManager] complete 无法获取账号邮箱，无法更新状态');
-      return false;
-    }
-
-    const result = await this.updateStatus(statusText, 'DONE', mail);
-    console.log(`[TaskManager] complete 结果: ${result}, mail: ${mail}`);
-
-    // 无论 updateStatus 是否成功，都尝试关闭窗口
-    // 因为任务已经完成，窗口应该关闭
+    // 无论 updateStatus 是否成功，都必须关闭窗口
+    // 因为任务已经完成，窗口应该关闭，且不需要重试
     try {
-      // 请求关闭窗口（不算重试，会触发主进程清理所有缓存）
+      // 请求关闭窗口（不算重试，shouldCountRetry = false）
       await this.close(false);
-      console.log(`[TaskManager] 已请求关闭窗口`);
+      console.log(`[TaskManager] 已请求关闭窗口（任务完成，不重试）`);
     } catch (error) {
       console.error('[TaskManager] 关闭窗口失败:', error);
+      // 即使关闭失败，也要清理任务信息
     }
 
     // 关闭窗口后再清理 localStorage 中的任务信息
@@ -199,45 +186,32 @@ export class TaskManager {
   }
 
   /**
-   * 标记错误, 不会修改状态
+   * 标记错误, 不会修改状态（仅更新状态文本，不关闭窗口）
    * @param statusText 错误描述
    */
   static async error(statusText: string): Promise<boolean> {
-    // 先获取 mail，确保能正确更新状态
-    const mail = this.getCurrentAccountMail() || this.get()?.mail;
-
-    if (!mail) {
-      console.warn('[TaskManager] error 无法获取账号邮箱，无法更新状态');
-      return false;
-    }
-
-    // 直接更新状态为 ERROR，以便主进程能够正确处理重试逻辑
-    return this.updateStatus(statusText || '发生错误', 'ERROR', mail);
+    // 直接更新状态为 ERROR（后端会自动从窗口识别账号）
+    return this.updateStatus(statusText || '发生错误', 'ERROR');
   }
 
   /**
    * 标记错误, 会修改状态为 ERROR
+   * errorComplete 必须关闭窗口，并且需要根据最大重试次数进行重试
    * @param statusText 错误描述（可选，如果为空字符串、null 或 undefined，则不更新 statusText）
    */
   static async errorComplete(statusText?: string | null): Promise<void> {
-    // 先获取 mail，因为 updateStatus 可能会清除任务信息
-    const mail = this.getCurrentAccountMail() || this.get()?.mail;
+    // 更新状态为 ERROR（后端会自动从窗口识别账号）
+    await this.updateStatus(statusText, 'ERROR');
 
-    if (!mail) {
-      console.warn('[TaskManager] errorComplete 无法获取账号邮箱，无法更新状态');
-      return;
-    }
-
-    await this.updateStatus(statusText, 'ERROR', mail);
-
-    // 无论 updateStatus 是否成功，都尝试关闭窗口
-    // 因为任务已经错误，窗口应该关闭
+    // 无论 updateStatus 是否成功，都必须关闭窗口
+    // 因为任务已经错误，窗口应该关闭，且需要根据最大重试次数进行重试
     try {
-      // 请求关闭窗口（不算重试，会触发主进程清理所有缓存）
+      // 请求关闭窗口（算作重试，shouldCountRetry = true）
       await this.close(true);
-      console.log(`[TaskManager] 已请求关闭窗口`);
+      console.log(`[TaskManager] 已请求关闭窗口（任务失败，需要重试）`);
     } catch (error) {
       console.error('[TaskManager] 关闭窗口失败:', error);
+      // 即使关闭失败，也要清理任务信息
     }
 
     // 关闭窗口后再清理 localStorage 中的任务信息
@@ -245,28 +219,14 @@ export class TaskManager {
   }
 
   /**
-   * 请求关闭窗口
+   * 请求关闭窗口（安全版本：后端自动从窗口识别账号）
    * @param shouldCountRetry 是否算作一次重试（默认 true，如果任务成功完成应该传 false）
    */
   static async close(shouldCountRetry: boolean = true): Promise<void> {
-    // 优先使用当前账号邮箱，如果没有则从任务中获取
-    let mail = this.getCurrentAccountMail();
-    if (!mail) {
-      const task = this.get();
-      mail = task?.mail;
-    }
-
-    if (!mail) {
-      console.warn(
-        '[TaskManager] 无法获取账号邮箱，将传递 undefined 给主进程，主进程会尝试自动查找',
-      );
-    }
-
     try {
-      // 通过 IPC 请求主进程关闭窗口（即使 mail 为 undefined，主进程也会尝试查找）
+      // 不再传递 mail 参数，后端会从 event.sender 自动识别窗口对应的账号
       const result = await ipcRenderer.invoke(
         'request-close-window',
-        mail,
         shouldCountRetry,
       );
       console.log(`[TaskManager] 关闭窗口请求成功:`, result);

@@ -1,8 +1,9 @@
-import { ipcMain, session } from 'electron';
+import { ipcMain, session, BrowserWindow } from 'electron';
 import { AccountEntity } from '@/orm/entities/account';
 import { AppDataSource } from '@/orm/data-source';
 import { TaskQueueManager } from '@/main/windows/browser/browser';
-import { ensureDataSourceReady } from './utils';
+import { ensureDataSourceReady, getAccountMailFromEvent } from './utils';
+import { proxyInfoMap } from '@/main/windows/browser/browser/common';
 
 export function registerBrowserWindowHandlers(ipcMain: typeof import('electron').ipcMain) {
   /**
@@ -101,26 +102,20 @@ export function registerBrowserWindowHandlers(ipcMain: typeof import('electron')
   });
 
   /**
-   * 请求关闭任务窗口
-   * @param mail 账号邮箱
+   * 请求关闭任务窗口（安全版本：从 event.sender 自动识别窗口对应的账号）
    * @param shouldCountRetry 是否算作一次重试（默认 true）
    */
   ipcMain.handle(
     'request-close-window',
-    async (event, mail: string | undefined, shouldCountRetry: boolean = true) => {
+    async (event: Electron.IpcMainInvokeEvent, shouldCountRetry: boolean = true) => {
       try {
-        const taskQueue = TaskQueueManager.getInstance();
-        // 如果 mail 为 undefined，尝试从 webContents 查找对应的窗口
-        if (!mail && event.sender) {
-          const { BrowserWindow } = await import('electron');
-          const windowId = BrowserWindow.fromWebContents(event.sender)?.id;
-          if (windowId) {
-            mail = taskQueue.getAccountMailByWindowId(windowId);
-            if (mail) {
-              console.log(`[request-close-window] 从窗口 ID ${windowId} 找到账号: ${mail}`);
-            }
-          }
+        // 从 event.sender 自动获取账号 mail（安全方式，不依赖前端传递）
+        const mail = getAccountMailFromEvent(event);
+        if (!mail) {
+          throw new Error('无法从窗口识别账号，请确保窗口已正确关联到任务');
         }
+
+        const taskQueue = TaskQueueManager.getInstance();
         await taskQueue.requestCloseWindow(mail, shouldCountRetry);
         return { success: true };
       } catch (error: unknown) {
@@ -135,11 +130,8 @@ export function registerBrowserWindowHandlers(ipcMain: typeof import('electron')
    * 获取当前窗口的实际代理信息
    * @returns 代理信息，如果没有代理则返回 null
    */
-  ipcMain.handle('get-current-proxy', async (event) => {
+  ipcMain.handle('get-current-proxy', async (event: Electron.IpcMainInvokeEvent) => {
     try {
-      const { BrowserWindow } = await import('electron');
-      const { proxyInfoMap } = await import('@/main/windows/browser/browser/common');
-      
       const window = BrowserWindow.fromWebContents(event.sender);
       if (!window || window.isDestroyed()) {
         return null;

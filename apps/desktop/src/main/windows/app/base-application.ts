@@ -2,6 +2,7 @@ import { globalEnv } from "@/global/global-env";
 import { app, BrowserWindow, globalShortcut, powerSaveBlocker } from "electron";
 import os from "node:os";
 import process from "node:process";
+import { TaskQueueManager, WindowManager } from "../browser/browser";
 
 export abstract class BaseApplication<WindowType extends BrowserWindow> {
   public abstract createMainWindow(): Promise<void>;
@@ -26,7 +27,16 @@ export abstract class BaseApplication<WindowType extends BrowserWindow> {
   }
 
   public initAppWindow() {
-    app.whenReady().then(() => this.createMainWindow());
+    app.whenReady().then(async () => {
+      await this.createMainWindow();
+      // 监听主窗口关闭事件，关闭所有子窗口
+      if (this.win) {
+        this.win.on('close', () => {
+          TaskQueueManager.getInstance().stopAllTasks().catch(console.error);
+          WindowManager.getInstance().closeAllChildWindows();
+        });
+      }
+    });
 
     app.on('will-quit', () => {
       globalShortcut.unregisterAll()

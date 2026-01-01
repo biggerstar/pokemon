@@ -1,5 +1,7 @@
 import { AppDataSource, dataSourceInitPromise } from '@/orm/data-source';
 import { AccountEntity } from '@/orm/entities/account';
+import { BrowserWindow } from 'electron';
+import { TaskQueueManager } from '@/main/windows/browser/browser';
 
 export async function ensureDataSourceReady(): Promise<void> {
   // 如果已经初始化，直接返回
@@ -80,13 +82,10 @@ export interface ImapConfig {
  * @param event IPC 事件对象
  * @returns 账号 mail，如果找不到则返回 null
  */
-export async function getAccountMailFromEvent(
+export function getAccountMailFromEvent(
   event: Electron.IpcMainInvokeEvent,
-): Promise<string | null> {
+): string | null {
   try {
-    const { BrowserWindow } = await import('electron');
-    const { TaskQueueManager } = await import('@/main/windows/browser/browser');
-    
     const webContents = event.sender;
     const window = BrowserWindow.fromWebContents(webContents);
     

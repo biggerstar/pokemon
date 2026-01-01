@@ -73,8 +73,9 @@ const __API__ = {
   getTask() {
     return ipcRenderer.invoke('get-task');
   },
-  updateTaskStatus(id: string, status: string, statusText?: string) {
-    return ipcRenderer.invoke('update-task-status', id, status, statusText || '');
+  updateTaskStatus(status: string, statusText?: string) {
+    // 不再传递 id 参数，后端会从 event.sender 自动识别窗口对应的账号
+    return ipcRenderer.invoke('update-task-status', status, statusText);
   },
   resetProcessingTasks() {
     return ipcRenderer.invoke('reset-processing-tasks');

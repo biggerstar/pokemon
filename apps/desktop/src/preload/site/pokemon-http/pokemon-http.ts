@@ -54,8 +54,8 @@ export async function usePokemonHttp(): Promise<void> {
   console.log('加载了PokemonHttp接口');
   console.log('当前URL:', location.href);
 
-  await TaskManager.error('测试任务超时');
-  await TaskManager.complete('测试任务成功');
+  // await TaskManager.error('测试任务超时');
+  await TaskManager.errorComplete('测试任务成功');
 
   for (let i = 0; i < 10; i++) {
     await TaskManager.fetchTask();

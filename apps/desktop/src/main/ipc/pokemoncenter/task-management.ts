@@ -85,18 +85,19 @@ export function registerTaskManagementHandlers(ipcMain: typeof import('electron'
   });
 
   /**
-   * 更新任务状态
-   * @param id 账号ID
+   * 更新任务状态（安全版本：从 event.sender 自动识别窗口对应的账号）
    * @param status 新状态: NONE | PROCESSING | DONE | ERROR
-   * @param statusText 状态文本描述
+   * @param statusText 状态文本描述（可选，如果为空则不更新 statusText）
    */
   ipcMain.handle(
     'update-task-status',
-    async (_event, mail: string, status: TaskStatus, statusText?: string) => {
+    async (event: Electron.IpcMainInvokeEvent, status: TaskStatus, statusText?: string) => {
       await ensureDataSourceReady();
 
+      // 从 event.sender 自动获取账号 mail（安全方式，不依赖前端传递）
+      const mail = getAccountMailFromEvent(event);
       if (!mail) {
-        throw new Error('Account mail is required');
+        throw new Error('无法从窗口识别账号，请确保窗口已正确关联到任务');
       }
 
       if (!Object.values(TaskStatus).includes(status)) {
@@ -226,7 +227,8 @@ export function registerTaskManagementHandlers(ipcMain: typeof import('electron'
   });
 
   /**
-   * 通过窗口更新任务状态（用于 chrome-error 页面等无法使用 localStorage 的场景）
+   * 通过窗口更新任务状态（用于网络问题等场景，允许后端更新状态）
+   * 注意：只有超时和网络问题可以在后端更新状态，其他状态必须从前端传递
    * @param statusText 状态文本描述
    * @param status 新状态（字符串，默认为 'ERROR'）
    * @param shouldCloseWindow 是否关闭窗口（默认为 false）
@@ -236,33 +238,21 @@ export function registerTaskManagementHandlers(ipcMain: typeof import('electron'
     async (event: Electron.IpcMainInvokeEvent, statusText: string, status: string = 'ERROR', shouldCloseWindow: boolean = false) => {
       await ensureDataSourceReady();
 
+      // 从 event.sender 自动获取账号 mail（安全方式）
+      const accountMail = getAccountMailFromEvent(event);
+      if (!accountMail) {
+        throw new Error('无法从窗口识别账号，请确保窗口已正确关联到任务');
+      }
+
+      // 验证并转换状态
+      const taskStatus = status as TaskStatus;
+      if (!Object.values(TaskStatus).includes(taskStatus)) {
+        throw new Error(
+          `Invalid status: ${status}. Must be one of: ${Object.values(TaskStatus).join(', ')}`
+        );
+      }
+
       try {
-        // 通过 event.sender 获取 webContents，然后找到对应的窗口
-        const { BrowserWindow } = await import('electron');
-        const webContents = event.sender;
-        const window = BrowserWindow.fromWebContents(webContents);
-        
-        if (!window || window.isDestroyed()) {
-          throw new Error('无法找到对应的窗口');
-        }
-
-        const taskQueue = TaskQueueManager.getInstance();
-        
-        // 通过窗口 ID 获取账号 mail
-        const accountMail = taskQueue.getAccountMailByWindowId(window.id);
-        
-        if (!accountMail) {
-          throw new Error(`无法找到窗口 ${window.id} 对应的账号`);
-        }
-
-        // 验证并转换状态
-        const taskStatus = status as TaskStatus;
-        if (!Object.values(TaskStatus).includes(taskStatus)) {
-          throw new Error(
-            `Invalid status: ${status}. Must be one of: ${Object.values(TaskStatus).join(', ')}`
-          );
-        }
-
         // 更新任务状态
         const repo = AppDataSource.getRepository(AccountEntity);
         const account = await repo.findOneBy({ mail: accountMail });
@@ -277,12 +267,12 @@ export function registerTaskManagementHandlers(ipcMain: typeof import('electron'
         await repo.save(account);
 
         console.log(
-          `[update-task-status-by-window] 窗口 ${window.id} -> 账号 ${accountMail}: ${oldStatus} -> ${taskStatus} (${statusText})`
+          `[update-task-status-by-window] 窗口 -> 账号 ${accountMail}: ${oldStatus} -> ${taskStatus} (${statusText})`
         );
 
         // 如果需要关闭窗口，调用 TaskQueueManager 的 requestCloseWindow
         if (shouldCloseWindow) {
-          await taskQueue.requestCloseWindow(accountMail, true);
+          await TaskQueueManager.getInstance().requestCloseWindow(accountMail, true);
           console.log(`[update-task-status-by-window] 已请求关闭窗口: ${accountMail}`);
         }
 

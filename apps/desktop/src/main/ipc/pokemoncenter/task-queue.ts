@@ -132,6 +132,16 @@ export function registerTaskQueueHandlers(ipcMain: typeof import('electron').ipc
         taskQueue.setMaxRetryCount(maxRetryCount);
         console.log(`[start-tasks] 验证最大重试次数: ${taskQueue.getMaxRetryCount()}`);
         console.log(`[start-tasks] 设置添加购物车时机: ${addToCartTiming}`);
+        
+        // 手动启动任务时，重置所有任务的重试计数（清除之前任务的重试计数）
+        for (const account of accountsToStart) {
+          const oldRetryCount = taskQueue.getRetryCountPublic(account.mail);
+          taskQueue.resetRetryCountPublic(account.mail);
+          console.log(
+            `[start-tasks] 重置账号 ${account.mail} 的重试计数: ${oldRetryCount} -> 0`,
+          );
+        }
+        
         taskQueue.addTasks(accountsToStart);
 
         return {
