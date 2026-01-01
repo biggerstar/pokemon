@@ -699,7 +699,7 @@ importers:
         version: 4.2.0
       custom-electron-titlebar:
         specifier: ^4.2.8
-        version: 4.2.8(electron@37.5.1)
+        version: 4.2.8(electron@packages+npm+electron)
       deepmerge:
         specifier: ^4.3.1
         version: 4.3.1
@@ -747,8 +747,8 @@ importers:
         specifier: ^3.1.11
         version: 3.1.11
       electron:
-        specifier: 37.5.1
-        version: 37.5.1
+        specifier: workspace:*
+        version: link:../../packages/npm/electron
       electron-builder:
         specifier: ^26.0.12
         version: 26.0.12(electron-builder-squirrel-windows@25.1.8)
@@ -1198,6 +1198,12 @@ importers:
       '@types/user-agents':
         specifier: 'catalog:'
         version: 1.0.4
+
+  packages/npm/electron:
+    dependencies:
+      extract-zip:
+        specifier: ^2.0.1
+        version: 2.0.1
 
   packages/vben/@core/base/design: {}
 
@@ -3605,8 +3611,8 @@ packages:
     resolution: {integrity: sha512-2xqwm05YPpo7TM//+v0bzS0FWiTzsjpSMnWdt7ZXs5/ZfQIedSuBXIrskd8HZ7c/cZzo1G9ALHTksnv/74vk/Q==}
     engines: {node: '>= 16'}
 
-  '@intlify/shared@11.2.7':
-    resolution: {integrity: sha512-uvlkvc/0uQ4FDlHQZccpUnmcOwNcaI3i+69ck2YJ+GqM35AoVbuS63b+YfirV4G0SZh64Ij2UMcFRMmB4nr95w==}
+  '@intlify/shared@11.2.8':
+    resolution: {integrity: sha512-l6e4NZyUgv8VyXXH4DbuucFOBmxLF56C/mqh2tvApbzl2Hrhi1aTDcuv5TKdxzfHYmpO3UB0Cz04fgDT9vszfw==}
     engines: {node: '>= 16'}
 
   '@intlify/shared@12.0.0-alpha.3':
@@ -6412,11 +6418,6 @@ packages:
 
   electron@34.3.3:
     resolution: {integrity: sha512-7m1FiO1mwc1K/UqqnnkG7Ik/kAngDzmLfHwcl+xaWgCQ+Sts9rlEqzOh6g1GHhDqebrbs4bO/aU+NDi32fCciQ==}
-    engines: {node: '>= 12.20.55'}
-    hasBin: true
-
-  electron@37.5.1:
-    resolution: {integrity: sha512-RqN3dl6I5yhmynkUc3pUzM6qFCvANau3VGRX9xQEh7FYdwmkqVxKXYM5enrE9LW7j7PzHomQQn6+J2xaF7BHsQ==}
     engines: {node: '>= 12.20.55'}
     hasBin: true
 
@@ -13924,7 +13925,7 @@ snapshots:
 
   '@intlify/shared@10.0.6': {}
 
-  '@intlify/shared@11.2.7': {}
+  '@intlify/shared@11.2.8': {}
 
   '@intlify/shared@12.0.0-alpha.3': {}
 
@@ -13932,8 +13933,8 @@ snapshots:
     dependencies:
       '@eslint-community/eslint-utils': 4.5.1(eslint@9.22.0(jiti@2.4.2))
       '@intlify/bundle-utils': 10.0.0(vue-i18n@10.0.6(vue@3.5.13(typescript@5.8.2)))
-      '@intlify/shared': 11.2.7
-      '@intlify/vue-i18n-extensions': 8.0.0(@intlify/shared@11.2.7)(@vue/compiler-dom@3.5.13)(vue-i18n@10.0.6(vue@3.5.13(typescript@5.8.2)))(vue@3.5.13(typescript@5.8.2))
+      '@intlify/shared': 11.2.8
+      '@intlify/vue-i18n-extensions': 8.0.0(@intlify/shared@11.2.8)(@vue/compiler-dom@3.5.13)(vue-i18n@10.0.6(vue@3.5.13(typescript@5.8.2)))(vue@3.5.13(typescript@5.8.2))
       '@rollup/pluginutils': 5.1.4(rollup@4.35.0)
       '@typescript-eslint/scope-manager': 8.26.1
       '@typescript-eslint/typescript-estree': 8.26.1(typescript@5.8.2)
@@ -13955,11 +13956,11 @@ snapshots:
       - supports-color
       - typescript
 
-  '@intlify/vue-i18n-extensions@8.0.0(@intlify/shared@11.2.7)(@vue/compiler-dom@3.5.13)(vue-i18n@10.0.6(vue@3.5.13(typescript@5.8.2)))(vue@3.5.13(typescript@5.8.2))':
+  '@intlify/vue-i18n-extensions@8.0.0(@intlify/shared@11.2.8)(@vue/compiler-dom@3.5.13)(vue-i18n@10.0.6(vue@3.5.13(typescript@5.8.2)))(vue@3.5.13(typescript@5.8.2))':
     dependencies:
       '@babel/parser': 7.26.10
     optionalDependencies:
-      '@intlify/shared': 11.2.7
+      '@intlify/shared': 11.2.8
       '@vue/compiler-dom': 3.5.13
       vue: 3.5.13(typescript@5.8.2)
       vue-i18n: 10.0.6(vue@3.5.13(typescript@5.8.2))
@@ -16869,9 +16870,9 @@ snapshots:
 
   csstype@3.1.3: {}
 
-  custom-electron-titlebar@4.2.8(electron@37.5.1):
+  custom-electron-titlebar@4.2.8(electron@packages+npm+electron):
     dependencies:
-      electron: 37.5.1
+      electron: link:packages/npm/electron
 
   cz-git@1.11.1: {}
 
@@ -17244,14 +17245,6 @@ snapshots:
     dependencies:
       '@electron/get': 2.0.3
       '@types/node': 20.17.24
-      extract-zip: 2.0.1
-    transitivePeerDependencies:
-      - supports-color
-
-  electron@37.5.1:
-    dependencies:
-      '@electron/get': 2.0.3
-      '@types/node': 22.13.13
       extract-zip: 2.0.1
     transitivePeerDependencies:
       - supports-color

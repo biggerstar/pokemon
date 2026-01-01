@@ -11,10 +11,10 @@
     "dev": "pnpm vite --mode development ",
     "build": "rimraf marketing && pnpm vite build --mode production",
     "preview:electron": "electron marketing/main/index.js",
-    "pack:unpack": "pnpm -w run build && electron-builder --dir",
-    "pack:win": "pnpm -w run build && electron-builder --win",
-    "pack:mac": "pnpm -w run build && electron-builder --mac",
-    "pack:linux": "pnpm -w run build && electron-builder --linux"
+    "pack:unpack": "node scripts/pack.js --dir",
+    "pack:win": "node scripts/pack.js --win",
+    "pack:mac": "node scripts/pack.js --mac",
+    "pack:linux": "node scripts/pack.js --linux"
   },
   "dependencies": {
     "@2captcha/captcha-solver": "^1.3.0",
@@ -40,7 +40,7 @@
     "@marketing/vite-plugin": "workspace:*",
     "@types/md5": "^2.3.5",
     "@types/sqlite3": "^3.1.11",
-    "electron": "37.5.1",
+    "electron": "workspace:*",
     "electron-builder": "^26.0.12",
     "rimraf": "catalog:",
     "rollup-plugin-copy": "catalog:",

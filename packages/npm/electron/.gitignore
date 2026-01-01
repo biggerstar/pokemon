@@ -1,0 +1,10 @@
+*
+
+# 允许的文件
+!cli.js
+!index.js
+!install.js
+!package.json
+
+# 允许 .gitignore 文件本身
+!.gitignore

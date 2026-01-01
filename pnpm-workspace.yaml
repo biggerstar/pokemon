@@ -1,7 +1,7 @@
 packages:
   - scripts/*
   - packages/internal/*
-  # - packages/npm/*
+  - packages/npm/*
   - packages/internal/lint-configs/*
   - packages/vben/*
   - packages/vben/@core/base/*
