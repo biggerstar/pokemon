@@ -116,11 +116,11 @@ function listenSetCurrentAccountMail() {
   });
 }
 
-export function initPokemon() {
+export async function initPokemon() {
   Object.defineProperty(window, 'sessionStorage', {
     get: () => localStorage,
   });
-  TaskManager.clear();
+  await TaskManager.clear();
   console.clear();
   listenSetCurrentAccountMail();
   document.addEventListener('DOMContentLoaded', () => {

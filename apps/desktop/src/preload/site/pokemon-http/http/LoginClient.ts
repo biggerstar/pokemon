@@ -1,6 +1,7 @@
 import {
   BASE_DOMAIN_URLS,
   BASE_ID_DOMAIN_API_URLS,
+  CAPTCHA_CONCURRENT_COUNT,
   DEFAULT_POKEMONCENTER_REQUEST_CONFIG,
   GIGYA_API_KEY,
   SSO_KEY,
@@ -151,36 +152,36 @@ export class LoginClient {
   }
 
   private async visitAccountWebSdkBootstrapApi() {
-    return this.axios.get(BASE_ID_DOMAIN_API_URLS.ACCOUNT_WEB_SDK_BOOTSTRAP, {
-      params: {
-        apiKey: GIGYA_API_KEY,
-        pageURL: BASE_DOMAIN_URLS.LOGIN,
-        sdk: 'js_next',
-        sdkBuild: this.sdkBuild,
-        format: 'json',
-      },
-    });
-    // .catch(() => { });
+    return this.axios
+      .get(BASE_ID_DOMAIN_API_URLS.ACCOUNT_WEB_SDK_BOOTSTRAP, {
+        params: {
+          apiKey: GIGYA_API_KEY,
+          pageURL: BASE_DOMAIN_URLS.LOGIN,
+          sdk: 'js_next',
+          sdkBuild: this.sdkBuild,
+          format: 'json',
+        },
+      })
+      .catch(() => {});
   }
 
   private async visitSSOPage() {
-    return this.axios.get(BASE_ID_DOMAIN_API_URLS.SSO, {
-      params: {
-        APIKey: GIGYA_API_KEY,
-        ssoSegment: '',
-        version: 'next',
-        build: this.sdkBuild,
-        flavor: 'base',
-      },
-    });
-    // .catch((error) => {
-    //   console.error('[SSO API] 请求失败:', error);
-    // });
+    return this.axios
+      .get(BASE_ID_DOMAIN_API_URLS.SSO, {
+        params: {
+          APIKey: GIGYA_API_KEY,
+          ssoSegment: '',
+          version: 'next',
+          build: this.sdkBuild,
+          flavor: 'base',
+        },
+      })
+      .catch((error) => {});
   }
 
   /** 获得 hoPvmDpa cookie */
   private async visitLarkbileometJS() {
-    return this.axios.get(BASE_DOMAIN_URLS.LARKBILEOMET_JS);
+    return this.axios.get(BASE_DOMAIN_URLS.LARKBILEOMET_JS).catch(() => {});
   }
 
   private isLoginSuccess(res: any) {
@@ -200,26 +201,21 @@ export class LoginClient {
       password: this.password,
       sessionExpiration: '3600',
       targetEnv: 'jssdk',
-      include: 'profile,data',
-      includeUserInfo: 'true',
+      // include: 'profile,data',
+      includeUserInfo: false,
       captchaToken: this.captchaToken,
       captchaType: 'reCaptchaEnterpriseScore',
-      lang: 'ja',
+      lang: 'zh',
       APIKey: GIGYA_API_KEY,
       sdk: 'js_latest',
       authMode: 'cookie',
-      pageURL: 'https://www.pokemoncenter-online.com/login/',
+      pageURL: 'https://www.pokemoncenter-online.com/login/?rurl=1',
       sdkBuild: this.sdkBuild,
       format: 'json',
     };
 
-    const formData = new URLSearchParams();
-    Object.entries(data).forEach(([key, value]) => {
-      formData.append(key, String(value));
-    });
-
     return this.axios
-      .post(BASE_ID_DOMAIN_API_URLS.LOGIN, formData.toString(), {
+      .post(BASE_ID_DOMAIN_API_URLS.LOGIN, data, {
         headers: {
           'content-type': 'application/x-www-form-urlencoded',
         },
@@ -294,7 +290,6 @@ export class LoginClient {
     }
     const data = {
       UID: this.uid,
-      uid: this.uid,
       gigyaAssertion: this.gigyaAssertion,
       csrf_token: this.csrfToken,
     };
@@ -308,16 +303,16 @@ export class LoginClient {
         },
         data: data,
         headers: {
-          'content-type': 'application/x-www-form-urlencoded',
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
         },
       })
       .then((res) => {
         console.log('[认证] factor2AuthApi 响应:', res.data);
-        return res;
+        return true;
       })
       .catch((error) => {
         console.error('[认证] factor2AuthApi 请求失败:', error);
-        throw error;
+        return false;
       });
   }
 
@@ -342,7 +337,8 @@ export class LoginClient {
             .querySelector('input[name="csrf_token"]')
             ?.getAttribute('value') || this.csrfToken;
         return html;
-      });
+      })
+      .catch(() => {});
   }
 
   private async mail2faApi() {
@@ -553,63 +549,94 @@ export class LoginClient {
         await TaskManager.updateStatus('[登录] 已登录，跳过登录流程');
         return true;
       }
-      await TaskManager.updateStatus('[登录] 获取登录页 Cookies');
-      await this.visitLoginPage();
       this.injectCookie();
-      await TaskManager.updateStatus('[登录] 获取 SDK Cookies');
-      await this.visitAccountWebSdkBootstrapApi();
-      // await TaskManager.updateStatus('[登录] 获取 SSO Cookies');
-      // await this.visitSSOPage();
-      await this.visitLarkbileometJS();
-      await TaskManager.updateStatus('[登录] Cookies 环境准备完成');
 
       await TaskManager.updateStatus('[验证码] 开始解决 reCaptcha');
       const startResolveTime = Date.now();
 
       // 从配置中获取验证码服务类型，默认为 'capmonster'
       const captchaService = this.taskInfo.captchaService;
-      const captchaToken = await this.resolveCaptcha(
-        BASE_DOMAIN_URLS.LOGIN,
-        captchaService,
-      );
-      console.info('🚀 ~ LoginClient ~ login ~ captchaToken:', captchaToken);
 
-      if (!captchaToken) {
+      // 并发获取验证码
+      const pendingPromises = new Map<
+        number,
+        Promise<{ token: string | null; id: number }>
+      >();
+      for (let i = 0; i < CAPTCHA_CONCURRENT_COUNT; i++) {
+        const p = this.resolveCaptcha(
+          BASE_DOMAIN_URLS.LOGIN,
+          captchaService,
+        ).then((token) => ({ token, id: i }));
+        pendingPromises.set(i, p);
+      }
+
+      let loginSuccessResult: string | boolean = false;
+      let hasSuccess = false;
+
+      while (pendingPromises.size > 0) {
+        // 等待最先完成的一个
+        const { token, id } = await Promise.race(pendingPromises.values());
+        // 从等待列表中移除
+        pendingPromises.delete(id);
+
+        if (!token) {
+          continue;
+        }
+
+        const resolveTime = ((Date.now() - startResolveTime) / 1000).toFixed(2);
         await TaskManager.updateStatus(
-          `[验证码] reCaptcha 解决失败 (${captchaService})`,
+          `[验证码] 任务 ${id} 解决完成 (${captchaService})，耗时: ${resolveTime}s`,
         );
-        return false;
-      }
-      this.setCaptchaToken(captchaToken);
-      const resolveTime = ((Date.now() - startResolveTime) / 1000).toFixed(2);
-      await TaskManager.updateStatus(
-        `[验证码] reCaptcha 解决完成 (${captchaService})，耗时: ${resolveTime}s`,
-      );
 
-      await TaskManager.updateStatus(`[登录] 开始登录: ${this.username}`);
-      const loginSuccess = await this.loginApi();
-      if (loginSuccess === 'ok') {
-        return true;
-      }
-      if (loginSuccess !== '2fa') {
-        return false;
+        // 保存到内存
+        this.setCaptchaToken(token);
+
+        try {
+          await TaskManager.updateStatus('[登录] 获取登录页 Cookies');
+          await this.visitLoginPage();
+          await TaskManager.updateStatus('[登录] 获取 SDK Cookies');
+          await this.visitLarkbileometJS();
+          await this.visitAccountWebSdkBootstrapApi();
+          // await this.visitSSOPage();
+          await TaskManager.updateStatus('[登录] Cookies 环境准备完成');
+
+          loginSuccessResult = await this.loginApi();
+          if (loginSuccessResult === 'ok') {
+            hasSuccess = true;
+            return true; // 登录成功，直接返回
+          } else if (loginSuccessResult === '2fa') {
+            await TaskManager.updateStatus('[TFA] 初始化二次认证');
+            const tfaSuccess = await this.initTFAApi();
+            if (!tfaSuccess) {
+              await TaskManager.updateStatus('[TFA] 初始化 TFA 失败');
+              continue;
+            }
+            await TaskManager.updateStatus('[认证] 初始化 TFA 成功');
+
+            await TaskManager.updateStatus('[认证] 开始二次认证');
+            const twoAuthSuccess = await this.factor2AuthApi();
+            if (!twoAuthSuccess) {
+              await TaskManager.updateStatus('[认证] 二次认证失败');
+              continue;
+            }
+            await TaskManager.updateStatus('[认证] 二次认证成功');
+            hasSuccess = true;
+            break;
+          } else {
+            await TaskManager.updateStatus(`[登录] Token ${id} 验证失败`);
+          }
+        } catch (error) {
+          await TaskManager.updateStatus(
+            `[登录] Token ${id} 登录过程出错: ${error}`,
+          );
+        }
       }
 
-      await TaskManager.updateStatus('[TFA] 初始化二次认证');
-      const tfaSuccess = await this.initTFAApi();
-      if (!tfaSuccess) {
-        await TaskManager.updateStatus('[TFA] 初始化 TFA 失败');
+      if (!hasSuccess) {
+        debugger
+        await TaskManager.updateStatus('[登录] 所有登录尝试失败');
         return false;
       }
-      await TaskManager.updateStatus('[认证] 初始化 TFA 成功');
-
-      await TaskManager.updateStatus('[认证] 开始二次认证');
-      const twoAuthSuccess = await this.factor2AuthApi();
-      if (!twoAuthSuccess) {
-        await TaskManager.updateStatus('[认证] 二次认证失败');
-        return false;
-      }
-      await TaskManager.updateStatus('[认证] 二次认证成功');
 
       await this.fetchMail2FaPage();
       const code = await this.getNewMail2AuthCode();

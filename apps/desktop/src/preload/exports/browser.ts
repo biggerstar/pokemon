@@ -35,7 +35,7 @@ if (location.href === 'about:blank') {
   // location.href = 'http://baidu.com/'
   // location.href = 'https://www.browserscan.net/zh/ipcheck/';
   // location.href = 'https://www.pokemoncenter-online.com/cart/';
-  location.href = 'https://www.pokemoncenter-online.com/login/';
+  location.href = 'https://www.pokemoncenter-online.com/login/?rurl=1';
 }
 
 if (location.href.includes('chrome-error://chromewebdata/')) {

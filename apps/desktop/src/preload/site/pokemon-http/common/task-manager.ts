@@ -137,11 +137,7 @@ export class TaskManager {
 
     try {
       // 不再传递 mail 参数，后端会从 event.sender 自动识别窗口对应的账号
-      await ipcRenderer.invoke(
-        'update-task-status',
-        finalStatus,
-        statusText,
-      );
+      await ipcRenderer.invoke('update-task-status', finalStatus, statusText);
       // 在 updateStatus 里面打印日志
       if (statusText) {
         console.log(`[${finalStatus}] ${statusText}`);
@@ -248,6 +244,6 @@ export class TaskManager {
    * 清除当前任务信息
    */
   static clear(): void {
-    localStorage.removeItem(STORAGE_KEY);
+    return localStorage.removeItem(STORAGE_KEY);
   }
 }

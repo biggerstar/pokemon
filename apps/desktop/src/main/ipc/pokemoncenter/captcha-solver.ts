@@ -109,6 +109,7 @@ export function registerCaptchaSolverHandlers(ipcMain: typeof import('electron')
             websiteURL: pageUrl,
             websiteKey: POKEMONCENTER_RECAPTCHA_WEBSITE_KEY,
             minScore: 0.9,
+            nocache: true,
           });
 
           const result = await cmcClient.Solve(recaptchaV3ProxylessRequest);

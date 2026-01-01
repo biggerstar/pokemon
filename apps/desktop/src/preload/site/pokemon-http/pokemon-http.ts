@@ -58,7 +58,6 @@ export async function usePokemonHttp(): Promise<void> {
 
   // await TaskManager.error('测试任务超时');
   // await TaskManager.complete('测试任务成功');
-
   for (let i = 0; i < 10; i++) {
     await TaskManager.fetchTask();
     const fetchedTask = TaskManager.get();

@@ -1,5 +1,7 @@
 export const SSO_KEY = '4_7NiPOgzmAtCo0ZGg-re9lg'
 
+export const CAPTCHA_CONCURRENT_COUNT = 4;
+
 export const POKEMONCENTER_RECAPTCHA_WEBSITE_KEY =
   "6Le9HlYqAAAAAJQtQcq3V_tdd73twiM4Rm2wUvn9";
 
