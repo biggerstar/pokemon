@@ -6,6 +6,17 @@
  * await automation.move('#btn').click().run(); // 可以继续链式调用
  */
 
+// ==================== 保存浏览器原始函数 ====================
+// 在文件最开始保存浏览器原始函数，防止被其他代码修改或拦截
+
+const originalElementFromPoint = document.elementFromPoint.bind(document);
+const originalCreateRange = document.createRange.bind(document);
+const originalCreateTreeWalker = document.createTreeWalker.bind(document);
+const originalQuerySelector = document.querySelector.bind(document);
+const originalQuerySelectorAll = document.querySelectorAll.bind(document);
+const originalGetSelection = window.getSelection.bind(window);
+const originalScrollTo = window.scrollTo.bind(window);
+
 // ==================== 类型定义 ====================
 
 export interface Point {
@@ -313,7 +324,7 @@ export class WebAutomation {
   // ==================== 内部方法 ====================
 
   private getElement(target: Target): HTMLElement | null {
-    if (typeof target === 'string') return document.querySelector(target);
+    if (typeof target === 'string') return originalQuerySelector(target);
     if (target instanceof HTMLElement) return target;
     if (target instanceof Element) return target as HTMLElement;
     return null;
@@ -458,7 +469,7 @@ export class WebAutomation {
     if (!this.isDomValid()) return null;
 
     try {
-      const target = document.elementFromPoint(p.x, p.y) || document.body;
+      const target = originalElementFromPoint(p.x, p.y) || document.body;
       if (!target) return null;
 
       if (this.config.dispatchEvents) {
@@ -1609,7 +1620,7 @@ export class WebAutomation {
   // 获取所有文本节点
   private getAllTextNodes(el: Element): Text[] {
     const nodes: Text[] = [];
-    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
+    const walker = originalCreateTreeWalker(el, NodeFilter.SHOW_TEXT, null);
     let node: Text | null;
     while ((node = walker.nextNode() as Text | null)) {
       if (node.textContent && node.textContent.length > 0) {
@@ -1639,7 +1650,7 @@ export class WebAutomation {
   // 根据文本节点和偏移获取位置
   private getTextRectByNode(node: Text, offset: number): DOMRect {
     try {
-      const range = document.createRange();
+      const range = originalCreateRange();
       const safeOffset = clamp(offset, 0, node.textContent?.length || 0);
       range.setStart(node, safeOffset);
       range.setEnd(node, Math.min(safeOffset + 1, node.textContent?.length || 0));
@@ -1656,9 +1667,9 @@ export class WebAutomation {
   // 设置选择范围
   private setSelection(startNode: Text, startOffset: number, endNode: Text, endOffset: number): void {
     try {
-      const selection = window.getSelection();
+      const selection = originalGetSelection();
       if (selection) {
-        const range = document.createRange();
+        const range = originalCreateRange();
         range.setStart(startNode, clamp(startOffset, 0, startNode.textContent?.length || 0));
         range.setEnd(endNode, clamp(endOffset, 0, endNode.textContent?.length || 0));
         selection.removeAllRanges();
@@ -1674,13 +1685,13 @@ export class WebAutomation {
     progress: number
   ): void {
     try {
-      const selection = window.getSelection();
+      const selection = originalGetSelection();
       if (!selection) return;
 
       // 简单线性插值
       if (startInfo.node === endInfo.node) {
         const currentEnd = Math.floor(startInfo.offset + (endInfo.offset - startInfo.offset) * progress);
-        const range = document.createRange();
+        const range = originalCreateRange();
         range.setStart(startInfo.node, startInfo.offset);
         range.setEnd(startInfo.node, clamp(currentEnd, startInfo.offset, endInfo.offset));
         selection.removeAllRanges();
@@ -1801,7 +1812,7 @@ export class WebAutomation {
         if (!this.isDomValid()) break;
 
         try {
-          const targetEl = document.elementFromPoint(this.pos.x, this.pos.y);
+          const targetEl = originalElementFromPoint(this.pos.x, this.pos.y);
           if (!targetEl) break;
 
           for (let i = 0; i < count; i++) {
@@ -1899,8 +1910,8 @@ export class WebAutomation {
         // 如果是数字，使用坐标方式
         if (typeof firstArg === 'number') {
           const [x, y, behavior = 'smooth'] = args;
-          if (typeof window !== 'undefined' && window.scrollTo) {
-            window.scrollTo({
+          if (typeof window !== 'undefined') {
+            originalScrollTo({
               left: x,
               top: y,
               behavior: behavior as ScrollBehavior,
@@ -1909,8 +1920,8 @@ export class WebAutomation {
         }
         // 如果是对象，直接传递给 window.scrollTo
         else if (firstArg && typeof firstArg === 'object' && ('top' in firstArg || 'left' in firstArg)) {
-          if (typeof window !== 'undefined' && window.scrollTo) {
-            window.scrollTo({
+          if (typeof window !== 'undefined') {
+            originalScrollTo({
               top: firstArg.top ?? window.scrollY,
               left: firstArg.left ?? window.scrollX,
               behavior: firstArg.behavior ?? 'smooth',
@@ -2117,7 +2128,7 @@ export class WebAutomation {
         const [selector, timeout = 10000] = args;
         const start = Date.now();
         while (Date.now() - start < timeout) {
-          if (document.querySelector(selector)) break;
+          if (originalQuerySelector(selector)) break;
           await sleep(100);
         }
         break;
@@ -2126,7 +2137,7 @@ export class WebAutomation {
         const [selector, timeout = 10000] = args;
         const start = Date.now();
         while (Date.now() - start < timeout) {
-          const el = document.querySelector(selector);
+          const el = originalQuerySelector(selector);
           if (!el) break;
           const style = getComputedStyle(el);
           if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') break;
@@ -2138,7 +2149,7 @@ export class WebAutomation {
         const [text, selector, timeout = 10000] = args;
         const start = Date.now();
         while (Date.now() - start < timeout) {
-          const container = selector ? document.querySelector(selector) : document.body;
+          const container = selector ? originalQuerySelector(selector) : document.body;
           if (container?.textContent?.includes(text)) break;
           await sleep(100);
         }
@@ -2472,12 +2483,12 @@ export class WebAutomation {
 
   /** 获取元素 */
   $(selector: string): HTMLElement | null {
-    return document.querySelector(selector);
+    return originalQuerySelector(selector);
   }
 
   /** 获取多个元素 */
   $$(selector: string): HTMLElement[] {
-    return Array.from(document.querySelectorAll(selector));
+    return Array.from(originalQuerySelectorAll(selector));
   }
 
   /** 获取元素文本 */
@@ -2506,7 +2517,7 @@ export class WebAutomation {
 
   /** 元素是否存在 */
   exists(selector: string): boolean {
-    return !!document.querySelector(selector);
+    return !!originalQuerySelector(selector);
   }
 
   /** 是否选中 */

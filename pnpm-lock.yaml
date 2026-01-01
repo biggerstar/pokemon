@@ -699,7 +699,7 @@ importers:
         version: 4.2.0
       custom-electron-titlebar:
         specifier: ^4.2.8
-        version: 4.2.8(electron@packages+npm+electron)
+        version: 4.2.8(electron@37.5.1)
       deepmerge:
         specifier: ^4.3.1
         version: 4.3.1
@@ -747,8 +747,8 @@ importers:
         specifier: ^3.1.11
         version: 3.1.11
       electron:
-        specifier: workspace:*
-        version: link:../../packages/npm/electron
+        specifier: 37.5.1
+        version: 37.5.1
       electron-builder:
         specifier: ^26.0.12
         version: 26.0.12(electron-builder-squirrel-windows@25.1.8)
@@ -1198,12 +1198,6 @@ importers:
       '@types/user-agents':
         specifier: 'catalog:'
         version: 1.0.4
-
-  packages/npm/electron:
-    dependencies:
-      extract-zip:
-        specifier: ^2.0.1
-        version: 2.0.1
 
   packages/vben/@core/base/design: {}
 
@@ -6418,6 +6412,11 @@ packages:
 
   electron@34.3.3:
     resolution: {integrity: sha512-7m1FiO1mwc1K/UqqnnkG7Ik/kAngDzmLfHwcl+xaWgCQ+Sts9rlEqzOh6g1GHhDqebrbs4bO/aU+NDi32fCciQ==}
+    engines: {node: '>= 12.20.55'}
+    hasBin: true
+
+  electron@37.5.1:
+    resolution: {integrity: sha512-RqN3dl6I5yhmynkUc3pUzM6qFCvANau3VGRX9xQEh7FYdwmkqVxKXYM5enrE9LW7j7PzHomQQn6+J2xaF7BHsQ==}
     engines: {node: '>= 12.20.55'}
     hasBin: true
 
@@ -16870,9 +16869,9 @@ snapshots:
 
   csstype@3.1.3: {}
 
-  custom-electron-titlebar@4.2.8(electron@packages+npm+electron):
+  custom-electron-titlebar@4.2.8(electron@37.5.1):
     dependencies:
-      electron: link:packages/npm/electron
+      electron: 37.5.1
 
   cz-git@1.11.1: {}
 
@@ -17245,6 +17244,14 @@ snapshots:
     dependencies:
       '@electron/get': 2.0.3
       '@types/node': 20.17.24
+      extract-zip: 2.0.1
+    transitivePeerDependencies:
+      - supports-color
+
+  electron@37.5.1:
+    dependencies:
+      '@electron/get': 2.0.3
+      '@types/node': 22.13.13
       extract-zip: 2.0.1
     transitivePeerDependencies:
       - supports-color

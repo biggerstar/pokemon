@@ -128,16 +128,13 @@ export function initPokemon() {
     useConsolePanel({ collapsed: false });
   });
 
-  window.addEventListener('mousemove', (ev) => {
-    console.log('mousemove', ev);
-  });
-
   whenDocumentElementStart(() => {
     const loginBox = document.querySelector('.comLoginBox');
     return [!!loginBox];
   }, 60 * 1000)
     .then(async () => {
       // await processLogin();
+      // return
       usePokemonHttp();
       sleep(5000).then(() => {
         addCoverElement();

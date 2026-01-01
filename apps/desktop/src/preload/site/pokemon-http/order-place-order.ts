@@ -5,7 +5,7 @@ import { ipcRenderer } from 'electron';
 
 export async function processOrderPlaceOrder() {
     // 检查开发模式配置，确保能正确获取配置信息
-    let isDevelopmentMode = false;
+    let isDevelopmentMode = true;
     try {
         isDevelopmentMode = await ipcRenderer.invoke('get-development-mode');
         console.log('[下单] 开发模式状态:', isDevelopmentMode);

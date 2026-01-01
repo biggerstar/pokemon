@@ -37,7 +37,7 @@ export class LoginClient {
 
   constructor() {
     this.axios = axios.create({
-      timeout: 12000,
+      timeout: 36000,
       maxRedirects: 0,
       withCredentials: true,
       ...DEFAULT_POKEMONCENTER_REQUEST_CONFIG,
@@ -233,12 +233,12 @@ export class LoginClient {
         }
         if (!regToken) {
           // throw new Error(`登录失败: ReCaptcha 验证失败`);
-          TaskManager.updateStatus(`登录失败: ReCaptcha 验证失败`)
-          return false
+          TaskManager.updateStatus(`登录失败: ReCaptcha 验证失败`);
+          return false;
         }
         if (errorCode !== 0 && errorCode !== 403101) {
           // throw new Error(`登录失败: ${errorDetails || errorMessage}`);
-          TaskManager.updateStatus(`登录失败: ${errorDetails || errorMessage}`)
+          TaskManager.updateStatus(`登录失败: ${errorDetails || errorMessage}`);
           return false;
         }
         console.info('regToken:', regToken);
@@ -294,6 +294,7 @@ export class LoginClient {
     }
     const data = {
       UID: this.uid,
+      uid: this.uid,
       gigyaAssertion: this.gigyaAssertion,
       csrf_token: this.csrfToken,
     };
@@ -566,7 +567,7 @@ export class LoginClient {
       const startResolveTime = Date.now();
 
       // 从配置中获取验证码服务类型，默认为 'capmonster'
-      const captchaService = this.taskInfo.captchaService || 'capmonster';
+      const captchaService = this.taskInfo.captchaService;
       const captchaToken = await this.resolveCaptcha(
         BASE_DOMAIN_URLS.LOGIN,
         captchaService,

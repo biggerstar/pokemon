@@ -55,16 +55,16 @@ export async function processLogin() {
       return null;
     }
     await automation
-      .autoPoint(5000)
-      .move(textEl, 1200)
-      .wait(600)
-      .selectText(textEl, 0, 16)
-      .wait(600)
-      .eval(() => {
-        window.scrollTo({ top: 80, behavior: 'smooth' });
-      })
+      .autoPoint(1200)
+      .move(textEl, 600)
+      // .wait(600)
+      // .selectText(textEl, 0, 16)
+      // .wait(600)
+      // .eval(() => {
+      //   window.scrollTo({ top: 220, behavior: 'smooth' });
+      // })
       .wait(1000)
-      .move(textEl, 1200)
+      .move(textEl, 600)
       .click(textEl)
       .autoPoint(1000)
       .run();
@@ -78,7 +78,6 @@ export async function processLogin() {
     }
     await automation
       .move(usernameEl, 600)
-      .wait(200)
       .wait(300)
       .click()
       .wait(300)

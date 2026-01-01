@@ -1,11 +1,11 @@
 import { removeDebugger } from '../common/remove-debugger';
 import { usePageLoading } from '../common/use-page-loading';
-import { useTrustedEvent } from '../common/use-trusted-event';
 import { useDevtool } from '../common/use-devtool';
 import { initPokemon } from '../site/pokemon-http/init';
 import { TaskManager } from '../site/pokemon-http/common/task-manager';
 import { processOrderPlaceOrder } from '../site/pokemon-http/order-place-order';
 import { ipcRenderer } from 'electron';
+import { useEventProxy } from '../common/use-event-proxy';
 
 console.log('浏览器加载成功!');
 
@@ -18,7 +18,7 @@ window['require'] = function () {
 // useTrustedEvent();
 usePageLoading();
 removeDebugger();
-useTrustedEvent();
+// useEventProxy();
 useDevtool({
   enableShortcut: true,
   enableButton: false,
@@ -41,7 +41,7 @@ if (location.href === 'about:blank') {
 if (location.href.includes('chrome-error://chromewebdata/')) {
   document.writeln('chrome-error://chromewebdata');
   // location.href = 'https://www.pokemoncenter-online.com/login/';
-  
+
   // 在 chrome-error 页面，localStorage 不可用，直接通过 IPC 更新任务状态
   // 主进程会通过 event.sender 获取当前窗口，然后找到对应的账号 mail
   ipcRenderer
