@@ -232,10 +232,14 @@ export class LoginClient {
           return 'ok';
         }
         if (!regToken) {
-          throw new Error(`登录失败: ReCaptcha 验证失败`);
+          // throw new Error(`登录失败: ReCaptcha 验证失败`);
+          TaskManager.updateStatus(`登录失败: ReCaptcha 验证失败`)
+          return false
         }
         if (errorCode !== 0 && errorCode !== 403101) {
-          throw new Error(`登录失败: ${errorDetails || errorMessage}`);
+          // throw new Error(`登录失败: ${errorDetails || errorMessage}`);
+          TaskManager.updateStatus(`登录失败: ${errorDetails || errorMessage}`)
+          return false;
         }
         console.info('regToken:', regToken);
         this.regToken = regToken;
@@ -715,6 +719,7 @@ export class LoginClient {
         const removeProductsLiElement = Array.from(
           document.querySelectorAll('ul.cart-list li'),
         );
+        console.log('找到', removeProductsLiElement.length, '个加购商品');
         for (const removeProductLiElement of removeProductsLiElement) {
           const pid =
             removeProductLiElement
@@ -734,6 +739,9 @@ export class LoginClient {
           await TaskManager.updateStatus(`[购物车] 移除购物车产品 ${pid} 成功`);
           await sleep(10000);
         }
+      })
+      .catch((err) => {
+        TaskManager.updateStatus('移除商品失败:' + err?.message || '');
       });
   }
 

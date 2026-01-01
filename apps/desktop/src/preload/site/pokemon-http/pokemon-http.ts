@@ -22,6 +22,8 @@ async function addToCart(loginClient: LoginClient): Promise<boolean> {
     // 从购物车移除历史产品
     await loginClient.removeHistoryProducts();
     await sleep(1000);
+    await loginClient.removeHistoryProducts();
+    await sleep(1000);
 
     // 添加购物车
     for (let i = 0; i < MAX_TRY_COUNT; i++) {
@@ -55,7 +57,7 @@ export async function usePokemonHttp(): Promise<void> {
   console.log('当前URL:', location.href);
 
   // await TaskManager.error('测试任务超时');
-  await TaskManager.errorComplete('测试任务成功');
+  // await TaskManager.complete('测试任务成功');
 
   for (let i = 0; i < 10; i++) {
     await TaskManager.fetchTask();

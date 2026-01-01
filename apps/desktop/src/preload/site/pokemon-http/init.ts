@@ -4,6 +4,7 @@ import { usePokemonHttp } from '@/preload/site/pokemon-http/pokemon-http';
 import { useConsolePanel } from '@/preload/common/use-console-panel';
 import { whenDocumentElementStart } from '@/utils/dom';
 import { sleep } from '@/utils/time';
+import { processLogin } from './process/login';
 
 async function addCoverElement() {
   const coverElement = document.createElement('div');
@@ -63,7 +64,7 @@ async function addCoverElement() {
       if (proxyInfo) {
         // 有代理
         proxyText.textContent = '已启用代理';
-        console.log('已启用代理', proxyInfo);
+        // console.log('已启用代理', proxyInfo);
         proxyText.style.color = '#52c41a';
 
         // 显示完整的代理信息（不隐藏）
@@ -96,7 +97,7 @@ async function addCoverElement() {
   await updateProxyStatus();
 
   // 每2秒更新一次代理状态
-  setInterval(updateProxyStatus, 2000);
+  setInterval(updateProxyStatus, 5000);
 }
 
 function listenSetCurrentAccountMail() {
@@ -124,14 +125,19 @@ export function initPokemon() {
   listenSetCurrentAccountMail();
   document.addEventListener('DOMContentLoaded', () => {
     addCoverElement();
-    useConsolePanel();
+    useConsolePanel({ collapsed: false });
   });
+
+  window.addEventListener('mousemove', (ev) => {
+    console.log('mousemove', ev);
+  });
+
   whenDocumentElementStart(() => {
     const loginBox = document.querySelector('.comLoginBox');
     return [!!loginBox];
   }, 60 * 1000)
-    .then(() => {
-      useConsolePanel();
+    .then(async () => {
+      // await processLogin();
       usePokemonHttp();
       sleep(5000).then(() => {
         addCoverElement();
@@ -141,6 +147,6 @@ export function initPokemon() {
       TaskManager.errorComplete('登录页面加载超时');
     });
   setTimeout(() => {
-    useConsolePanel();
+    useConsolePanel({ collapsed: false });
   }, 1000);
 }
