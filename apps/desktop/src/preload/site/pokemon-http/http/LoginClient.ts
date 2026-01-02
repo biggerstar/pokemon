@@ -106,19 +106,15 @@ export class LoginClient {
    * @param service 验证码服务类型: 'capmonster' | '2captcha'，默认为 'capmonster'
    * @returns 验证码 token
    */
-  private async resolveCaptcha(
-    pageUrl: string,
-    service: 'capmonster' | '2captcha' = 'capmonster',
-  ): Promise<string | null> {
+  private async resolveCaptcha(pageUrl: string): Promise<string | null> {
     try {
       const captchaToken = await ipcRenderer.invoke(
         'resolve-recaptcha-unified',
         pageUrl,
-        service,
       );
       return captchaToken || null;
     } catch (error: any) {
-      console.error(`[resolveCaptcha] 验证码解析失败 (${service}):`, error);
+      console.error(`[resolveCaptcha] 验证码解析失败:`, error);
       return null;
     }
   }
@@ -382,7 +378,7 @@ export class LoginClient {
    * 默认只获取一次，如果获取到的验证码是已使用过的，才会重新获取一次
    * @returns 新的验证码，如果获取失败则返回 null
    */
-  private async getNewMail2AuthCode(): Promise<string | null> {
+  public async getNewMail2AuthCode(): Promise<string | null> {
     await TaskManager.updateStatus('[邮件验证码] 开始获取邮件验证码');
 
     // 记录开始查询的时间戳，只有在此时间之后发送的邮件才算有效
@@ -554,19 +550,16 @@ export class LoginClient {
       await TaskManager.updateStatus('[验证码] 开始解决 reCaptcha');
       const startResolveTime = Date.now();
 
-      // 从配置中获取验证码服务类型，默认为 'capmonster'
-      const captchaService = this.taskInfo.captchaService;
-
       // 并发获取验证码
       const pendingPromises = new Map<
         number,
         Promise<{ token: string | null; id: number }>
       >();
       for (let i = 0; i < CAPTCHA_CONCURRENT_COUNT; i++) {
-        const p = this.resolveCaptcha(
-          BASE_DOMAIN_URLS.LOGIN,
-          captchaService,
-        ).then((token) => ({ token, id: i }));
+        const p = this.resolveCaptcha(BASE_DOMAIN_URLS.LOGIN).then((token) => ({
+          token,
+          id: i,
+        }));
         pendingPromises.set(i, p);
       }
 
@@ -585,7 +578,7 @@ export class LoginClient {
 
         const resolveTime = ((Date.now() - startResolveTime) / 1000).toFixed(2);
         await TaskManager.updateStatus(
-          `[验证码] 任务 ${id} 解决完成 (${captchaService})，耗时: ${resolveTime}s`,
+          `[验证码] 任务 ${id} 解决完成，耗时: ${resolveTime}s`,
         );
 
         // 保存到内存
@@ -633,7 +626,7 @@ export class LoginClient {
       }
 
       if (!hasSuccess) {
-        debugger
+        // debugger;
         await TaskManager.updateStatus('[登录] 所有登录尝试失败');
         return false;
       }
@@ -749,15 +742,24 @@ export class LoginClient {
         );
         console.log('找到', removeProductsLiElement.length, '个加购商品');
         for (const removeProductLiElement of removeProductsLiElement) {
-          const pid =
+          let pid =
             removeProductLiElement
               .querySelector('.product-name')
               ?.getAttribute('data-pid') || '';
+          if (!pid) {
+            pid = removeProductLiElement
+              .querySelector('div[data-product-id]')
+              .getAttribute('data-product-id');
+          }
+          if (!pid) {
+            pid = removeProductLiElement.getAttribute('data-no');
+          }
           if (!pid) continue;
-          const uuid = removeProductLiElement.classList.value.replace(
-            'uuid-',
-            '',
-          );
+          const selectEl = removeProductLiElement.querySelector('select');
+          if (!selectEl || selectEl.disabled) {
+            return;
+          }
+          let uuid = selectEl.getAttribute('data-uuid');
           console.info(
             '🚀 ~ LoginClient ~ removeHistoryProducts ~ uuid:',
             uuid,

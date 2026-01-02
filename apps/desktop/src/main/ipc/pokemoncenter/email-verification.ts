@@ -31,7 +31,7 @@ function isValidCode(code: string): boolean {
 function extractVerificationCode(emailContent: string): string | null {
   // 如果是HTML邮件，先提取纯文本内容
   let textContent = emailContent;
-  
+
   // 尝试提取HTML邮件的文本内容
   const htmlBodyMatch = emailContent.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
   if (htmlBodyMatch) {
@@ -76,7 +76,7 @@ function extractVerificationCode(emailContent: string): string | null {
   for (const pattern of patterns) {
     // 重置正则表达式的lastIndex
     pattern.lastIndex = 0;
-    
+
     for (const match of textContent.matchAll(pattern)) {
       // 优先使用捕获组（match[1]），如果没有则使用整个匹配
       const rawCode = match[1] || match[0];
@@ -99,7 +99,7 @@ function extractVerificationCode(emailContent: string): string | null {
         Math.max(0, match.index! - 50),
         Math.min(textContent.length, match.index! + 50)
       );
-      
+
       // 排除明显的时间戳、ID等（但如果是最后一个模式，放宽检查）
       const isLastPattern = pattern === patterns[patterns.length - 1];
       if (!isLastPattern) {
@@ -146,16 +146,16 @@ function isValidEmail(
     console.log('[IMAP] 邮件验证失败：没有发送者信息');
     return false;
   }
-  
+
   const fromLower = from.toLowerCase();
   const expectedEmailLower = POKEMONCENTER_EMAIL.toLowerCase();
-  
+
   // 允许完全匹配或包含 pokemoncenter 的邮件
   if (fromLower !== expectedEmailLower && !fromLower.includes('pokemoncenter')) {
     console.log(`[IMAP] 邮件验证失败：发送者 ${from} 不匹配 Pokemon Center (期望: ${POKEMONCENTER_EMAIL})`);
     return false;
   }
-  
+
   // 如果发送者匹配，记录日志
   if (fromLower !== expectedEmailLower) {
     console.log(`[IMAP] 发送者匹配（宽松模式）: ${from} (期望: ${POKEMONCENTER_EMAIL})`);
@@ -170,7 +170,7 @@ function isValidEmail(
   // 这样可以确保在全球任意时区运行时都能正确比较时间
   const sentTimestamp = sentDate.getTime();
   const nowTimestamp = now.getTime();
-  
+
   // 关键验证：邮件的发送时间应该 >= startTime（不允许使用旧邮件）
   // 但允许一定的时间容差（30秒），以应对时间不同步的问题
   // 使用时间戳比较，完全时区无关
@@ -184,7 +184,7 @@ function isValidEmail(
     );
     return false;
   }
-  
+
   // 如果邮件在容差范围内（startTime 之前30秒内），记录警告但仍接受
   if (sentTimestamp < startTime) {
     const timeDiff = Math.round((startTime - sentTimestamp) / 1000);
@@ -251,7 +251,7 @@ async function fetchVerificationCodeWithClient(
     // 策略：不依赖 IMAP 服务器的时间过滤（避免时区问题）
     // 直接获取最新的一封邮件，然后使用 UTC 时间戳进行精确过滤
     // 这样可以完全避免时区问题，因为所有时间比较都使用 UTC 时间戳（毫秒）
-    
+
     // 获取最新的邮件 UID 列表（不指定时间范围，避免时区问题）
     // 使用空搜索条件获取所有邮件，然后按 UID 排序取最新的一封
     const allUids = await client.search({}, { uid: true });
@@ -287,7 +287,7 @@ async function fetchVerificationCodeWithClient(
         const envelope = messageHeader.envelope;
         const subject = envelope?.subject?.[0] || '';
         const from = envelope?.from?.[0]?.address || '';
-        
+
         // 解析邮件发送时间
         // envelope.date 可能是 Date 对象或时间戳，确保转换为 Date 对象
         let sentDate: Date | null = null;
@@ -340,7 +340,7 @@ async function fetchVerificationCodeWithClient(
           }
           continue; // 继续检查下一个邮件
         }
-        
+
         console.log('[IMAP]   ✅ Email validation passed!');
 
         const sentTimestamp = sentDate.getTime();
@@ -411,7 +411,7 @@ async function fetchVerificationCodeWithClient(
 export function registerGetMail2FAHandler(ipcMain: typeof import('electron').ipcMain) {
   ipcMain.handle(
     'get-mail-2fa',
-    async (_event, loginId?: string, startTime?: number) => {
+    async (event: import('electron').IpcMainInvokeEvent, loginId?: string, startTime?: number) => {
       const normalizedLoginId = normalizeEmail(loginId);
 
       if (!normalizedLoginId) {
@@ -497,12 +497,16 @@ export function registerGetMail2FAHandler(ipcMain: typeof import('electron').ipc
         // 基于时间的轮询：持续轮询直到超时或找到验证码
         let attempt = 0;
         while (true) {
+          if (event.sender.isDestroyed()) {
+            console.log('[get-mail-2fa] Window is closed, cancelling task');
+            return null;
+          }
           attempt++;
           try {
             const now = Date.now();
             const elapsed = Math.round((now - requestTime) / 1000);
             const remaining = Math.round((TOTAL_TIMEOUT_MS - (now - requestTime)) / 1000);
-            
+
             // 检查是否超时
             if (now - requestTime >= TOTAL_TIMEOUT_MS) {
               console.log(
@@ -543,7 +547,7 @@ export function registerGetMail2FAHandler(ipcMain: typeof import('electron').ipc
             // 检查是否还有剩余时间
             const timeAfterCheck = Date.now();
             const remainingAfterCheck = TOTAL_TIMEOUT_MS - (timeAfterCheck - requestTime);
-            
+
             if (remainingAfterCheck <= 0) {
               const totalElapsed = Math.round((timeAfterCheck - requestTime) / 1000);
               console.log(
@@ -568,7 +572,7 @@ export function registerGetMail2FAHandler(ipcMain: typeof import('electron').ipc
           } catch (error: unknown) {
             const err = error as Error;
             console.error(`[get-mail-2fa] Attempt ${attempt} failed:`, err.message);
-            
+
             // 检查是否超时
             const now = Date.now();
             if (now - requestTime >= TOTAL_TIMEOUT_MS) {
@@ -578,7 +582,7 @@ export function registerGetMail2FAHandler(ipcMain: typeof import('electron').ipc
               );
               return null;
             }
-            
+
             // 如果是连接错误，尝试重连
             if (
               err.message?.includes('connection') ||
@@ -589,7 +593,7 @@ export function registerGetMail2FAHandler(ipcMain: typeof import('electron').ipc
               try {
                 await client.connect();
                 console.log('[get-mail-2fa] 重连成功，继续轮询');
-                
+
                 // 检查是否还有剩余时间
                 const timeAfterReconnect = Date.now();
                 const remainingAfterReconnect = TOTAL_TIMEOUT_MS - (timeAfterReconnect - requestTime);
@@ -600,7 +604,7 @@ export function registerGetMail2FAHandler(ipcMain: typeof import('electron').ipc
                   );
                   return null;
                 }
-                
+
                 // 计算等待时间
                 const waitTime = Math.min(POLL_INTERVAL_MS, remainingAfterReconnect);
                 if (waitTime > 0) {
@@ -610,7 +614,7 @@ export function registerGetMail2FAHandler(ipcMain: typeof import('electron').ipc
               } catch (reconnectErr: unknown) {
                 const reconnectError = reconnectErr as Error;
                 console.error('[get-mail-2fa] 重连失败:', reconnectError.message);
-                
+
                 // 检查是否超时
                 const timeAfterReconnectFail = Date.now();
                 if (timeAfterReconnectFail - requestTime >= TOTAL_TIMEOUT_MS) {
@@ -620,7 +624,7 @@ export function registerGetMail2FAHandler(ipcMain: typeof import('electron').ipc
                   );
                   return null;
                 }
-                
+
                 const waitTime = Math.min(POLL_INTERVAL_MS, TOTAL_TIMEOUT_MS - (timeAfterReconnectFail - requestTime));
                 if (waitTime > 0) {
                   await sleep(waitTime);
@@ -628,7 +632,7 @@ export function registerGetMail2FAHandler(ipcMain: typeof import('electron').ipc
                 continue;
               }
             }
-            
+
             // 其他错误，等待后继续（如果还有时间）
             const timeAfterError = Date.now();
             const remainingAfterError = TOTAL_TIMEOUT_MS - (timeAfterError - requestTime);
@@ -639,7 +643,7 @@ export function registerGetMail2FAHandler(ipcMain: typeof import('electron').ipc
               );
               return null;
             }
-            
+
             const waitTime = Math.min(POLL_INTERVAL_MS, remainingAfterError);
             if (waitTime > 0) {
               await sleep(waitTime);

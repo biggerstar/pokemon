@@ -14,7 +14,9 @@ const CONFIG_KEYS = {
   DEFAULT_SERVICE: 'captcha_default_service',
 } as const;
 
-export function registerCaptchaSolverHandlers(ipcMain: typeof import('electron').ipcMain) {
+export function registerCaptchaSolverHandlers(
+  ipcMain: typeof import('electron').ipcMain,
+) {
   /**
    * 解析 reCAPTCHA v3 验证码（使用 CapMonster）
    * @param pageUrl 当前页面 URL
@@ -24,13 +26,15 @@ export function registerCaptchaSolverHandlers(ipcMain: typeof import('electron')
     console.log('[resolve-recaptcha] 开始解析验证码, pageUrl:', pageUrl);
 
     try {
-      const capmonsterToken = await getConfigValue(CONFIG_KEYS.CAPMONSTER_TOKEN);
+      const capmonsterToken = await getConfigValue(
+        CONFIG_KEYS.CAPMONSTER_TOKEN,
+      );
       if (!capmonsterToken) {
         throw new Error('CapMonster Token 未配置，请在软件配置中设置');
       }
 
       const cmcClient = CapMonsterCloudClientFactory.Create(
-        new ClientOptions({ clientKey: capmonsterToken })
+        new ClientOptions({ clientKey: capmonsterToken }),
       );
 
       const recaptchaV3ProxylessRequest = new RecaptchaV3ProxylessRequest({
@@ -44,7 +48,7 @@ export function registerCaptchaSolverHandlers(ipcMain: typeof import('electron')
 
       console.log(
         '[resolve-recaptcha] 验证码解析成功, token:',
-        token ? `${token.substring(0, 30)}...` : '(empty)'
+        token ? `${token.substring(0, 30)}...` : '(empty)',
       );
 
       return token;
@@ -63,14 +67,16 @@ export function registerCaptchaSolverHandlers(ipcMain: typeof import('electron')
    */
   ipcMain.handle(
     'resolve-recaptcha-unified',
-    async (_event, pageUrl: string, service: 'capmonster' | '2captcha' = 'capmonster') => {
-      console.log(
-        `[resolve-recaptcha-unified] 开始解析验证码, pageUrl: ${pageUrl}, service: ${service}`
+    async (_event, pageUrl: string) => {
+      const defaultService = await getConfigValue(CONFIG_KEYS.DEFAULT_SERVICE);
+       console.log(
+        `[resolve-recaptcha-unified] 开始解析验证码(${defaultService}), pageUrl: ${pageUrl}`,
       );
-
       try {
-        if (service === '2captcha') {
-          const twoCaptchaToken = await getConfigValue(CONFIG_KEYS.TWO_CAPTCHA_TOKEN);
+        if (defaultService === '2captcha') {
+          const twoCaptchaToken = await getConfigValue(
+            CONFIG_KEYS.TWO_CAPTCHA_TOKEN,
+          );
           if (!twoCaptchaToken) {
             throw new Error('2Captcha Token 未配置，请在软件配置中设置');
           }
@@ -86,23 +92,26 @@ export function registerCaptchaSolverHandlers(ipcMain: typeof import('electron')
           });
 
           // 处理不同的返回格式：可能是字符串或对象包含 data 字段
-          const token = typeof result === 'string' ? result : result?.data || '';
+          const token =
+            typeof result === 'string' ? result : result?.data || '';
 
           console.log(
             '[resolve-recaptcha-unified] 2captcha 验证码解析成功, token:',
-            token ? `${token.substring(0, 30)}...` : '(empty)'
+            token ? `${token.substring(0, 30)}...` : '(empty)',
           );
 
           return token;
         } else {
           // 默认使用 CapMonster
-          const capmonsterToken = await getConfigValue(CONFIG_KEYS.CAPMONSTER_TOKEN);
+          const capmonsterToken = await getConfigValue(
+            CONFIG_KEYS.CAPMONSTER_TOKEN,
+          );
           if (!capmonsterToken) {
             throw new Error('CapMonster Token 未配置，请在软件配置中设置');
           }
 
           const cmcClient = CapMonsterCloudClientFactory.Create(
-            new ClientOptions({ clientKey: capmonsterToken })
+            new ClientOptions({ clientKey: capmonsterToken }),
           );
 
           const recaptchaV3ProxylessRequest = new RecaptchaV3ProxylessRequest({
@@ -117,17 +126,21 @@ export function registerCaptchaSolverHandlers(ipcMain: typeof import('electron')
 
           console.log(
             '[resolve-recaptcha-unified] CapMonster 验证码解析成功, token:',
-            token ? `${token.substring(0, 30)}...` : '(empty)'
+            token ? `${token.substring(0, 30)}...` : '(empty)',
           );
 
           return token;
         }
       } catch (error: unknown) {
         const err = error as Error;
-        console.error(`[resolve-recaptcha-unified] 验证码解析失败 (${service}):`, err.message);
-        throw new Error(`Failed to resolve recaptcha with ${service}: ${err.message}`);
+        console.error(
+          `[resolve-recaptcha-unified] 验证码解析失败 (${defaultService}):`,
+          err.message,
+        );
+        throw new Error(
+          `Failed to resolve recaptcha with ${defaultService}: ${err.message}`,
+        );
       }
-    }
+    },
   );
 }
-

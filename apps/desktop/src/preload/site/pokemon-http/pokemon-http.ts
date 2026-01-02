@@ -7,8 +7,8 @@ window.close = function () {
 };
 
 const MAX_TRY_COUNT = 4;
+const LOGIN_TRY_COUNT_KEY = 'pokemon_login_try_count';
 let addToCartTryCount = 0;
-let loginTryCount = 0;
 let isAddToCartSuccess = false;
 
 /**
@@ -96,16 +96,23 @@ export async function usePokemonHttp(): Promise<void> {
     await TaskManager.updateStatus('[登录] 开始登录流程');
     const isLoginSuccess = await loginClient.login();
     if (!isLoginSuccess) {
-      loginTryCount++;
-      if (loginTryCount <= MAX_TRY_COUNT) {
-        setTimeout(() => usePokemonHttp(), 2000);
+      const currentTryCount = parseInt(
+        localStorage.getItem(LOGIN_TRY_COUNT_KEY) || '0',
+        10,
+      );
+      const nextTryCount = currentTryCount + 1;
+      if (nextTryCount <= MAX_TRY_COUNT) {
+        localStorage.setItem(LOGIN_TRY_COUNT_KEY, nextTryCount.toString());
+        window.location.reload();
         return;
       } else {
         // 登录失败，算作重试
+        localStorage.removeItem(LOGIN_TRY_COUNT_KEY);
         await TaskManager.errorComplete();
         return;
       }
     }
+    localStorage.removeItem(LOGIN_TRY_COUNT_KEY);
     await TaskManager.updateStatus('[登录] 登录成功');
   } else {
     await TaskManager.updateStatus('[登录] 已登录，跳过登录流程');
