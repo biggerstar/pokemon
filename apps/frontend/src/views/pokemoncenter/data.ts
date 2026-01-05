@@ -1,6 +1,12 @@
 import type { VbenFormSchema } from '#/adapter/form';
-import type { VxeTableGridOptions } from '#/adapter/vxe-table';
+import type {
+  VxeTableGridOptions,
+  OnActionClickParams,
+} from '#/adapter/vxe-table';
 import dayjs from 'dayjs';
+import { h } from 'vue';
+import { Tag, Button } from 'ant-design-vue';
+import { IconifyIcon } from '@vben/icons';
 
 export const formatTimeField = (time: string | null): string => {
   if (!time) return '';
@@ -10,6 +16,50 @@ export const formatTimeField = (time: string | null): string => {
     return time || '';
   }
 };
+
+interface StoredCookie {
+  name: string;
+  value: string;
+  domain: string;
+  path: string;
+  secure: boolean;
+  httpOnly: boolean;
+  expirationDate?: number;
+  sameSite?: 'unspecified' | 'no_restriction' | 'lax' | 'strict';
+}
+
+const formatCookieField = (cookies: StoredCookie[] | null | undefined): string => {
+  if (!Array.isArray(cookies) || cookies.length === 0) return '';
+  const pairs = cookies
+    .filter((c) => !!c && typeof c.name === 'string')
+    .map((c) => `${c.name}=${c.value ?? ''}`);
+  return pairs.join('; ');
+};
+
+interface AccountRow {
+  mail: string;
+  status: 'NONE' | 'PROCESSING' | 'DONE' | 'ERROR';
+  statusText?: string;
+  windowStatus?: 'OPEN' | 'CLOSED';
+  windowVisible?: boolean;
+  data: Record<string, unknown>;
+  created_time?: string;
+}
+
+interface ToggleResult {
+  success: boolean;
+  visible: boolean;
+}
+
+async function handleToggleWindowVisibility(
+  params: OnActionClickParams<AccountRow>,
+): Promise<void> {
+  const { row } = params;
+  const res: ToggleResult = await __API__.toggleTaskWindowVisibility(row.mail);
+  if (res && typeof res.visible === 'boolean') {
+    row.windowVisible = res.visible;
+  }
+}
 
 export function useGridFormSchema(): VbenFormSchema[] {
   return [
@@ -32,53 +82,95 @@ export function useColumns(): VxeTableGridOptions['columns'] {
       title: 'Status',
       width: 120,
       // sortable: true,
+      cellRender: {
+        name: 'CellTag',
+        options: [
+          { color: 'success', label: '已下单', value: 'DONE' },
+          { color: 'default', label: '处理中', value: 'PROCESSING' },
+          { color: 'error', label: '错误', value: 'ERROR' },
+          { color: 'default', label: '就绪', value: 'NONE' },
+        ],
+      },
       filters: [
         { label: '就绪', value: '就绪' },
         { label: '处理中', value: '处理中' },
-        { label: '完成', value: '完成' },
+        { label: '已下单', value: '已下单' },
         { label: '错误', value: '错误' },
       ],
       filterMethod: (options) => {
-        const { row, option } = options
+        const { row, option } = options;
         if (option.label === '就绪' && row.status === 'NONE') {
-          return true
+          return true;
         }
-        if (option.label === '完成' && row.status === 'DONE') {
-          return true
+        if (option.label === '已下单' && row.status === 'DONE') {
+          return true;
         }
         if (option.label === '错误' && row.status === 'ERROR') {
-          return true
+          return true;
         }
         if (option.label === '处理中' && row.status === 'PROCESSING') {
-          return true
+          return true;
         }
-        return false
-      }
+        return false;
+      },
     },
     {
       field: 'windowStatus',
       title: '窗口状态',
       width: 120,
-      cellRender: {
-        name: 'CellTag',
-        options: [
-          { color: 'success', label: '打开', value: 'OPEN' },
-          { color: 'default', label: '关闭', value: 'CLOSED' },
-        ],
+      slots: {
+        default: ({ row }: { row: AccountRow }) => {
+          const isOpen = row.windowStatus === 'OPEN';
+          const showEye = isOpen;
+          const tag = h(
+            Tag,
+            { color: isOpen ? 'success' : 'default' },
+            { default: () => (isOpen ? '打开' : '关闭') },
+          );
+          if (!showEye) {
+            return [tag];
+          }
+          const iconName = row.windowVisible
+            ? 'ant-design:eye-outlined'
+            : 'ant-design:eye-invisible-filled';
+          const eyeBtn = h(
+            Button,
+            {
+              size: 'small',
+              type: 'link',
+              class: 'ml-1',
+              onClick: () =>
+                handleToggleWindowVisibility({ code: 'toggleEye', row }),
+            },
+            {
+              default: () =>
+                h(IconifyIcon, { class: 'size-5', icon: iconName }),
+            },
+          );
+          return [
+            h('div', { class: 'flex items-center gap-1' }, [tag, eyeBtn]),
+          ];
+        },
       },
       filters: [
         { label: '打开', value: 'OPEN' },
         { label: '关闭', value: 'CLOSED' },
       ],
       filterMethod: (options) => {
-        const { row, option } = options
-        return row.windowStatus === option.value
-      }
+        const { row, option } = options;
+        return row.windowStatus === option.value;
+      },
     },
     {
       field: 'statusText',
       title: 'Status Text',
       width: 230,
+    },
+    {
+      field: 'data.loginCookies',
+      title: 'Cookie',
+      width: 230,
+      formatter: ({ cellValue }) => formatCookieField(cellValue as StoredCookie[]),
     },
     {
       field: 'mail',

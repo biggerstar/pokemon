@@ -13,7 +13,9 @@ import {
   resetSessionProxy,
   proxyInfoMap,
   loginEventListeners,
+  setupPermanentCookieInterceptor,
 } from './common';
+import { PERMANENT_COOKIE_TTL_SECONDS, TASK_RETRY_CLEAR_THRESHOLD } from '@/preload/site/pokemon-http/http/constant';
 
 interface TaskWindowInfo {
   window: BrowserWindow;
@@ -227,12 +229,16 @@ export class TaskQueueManager {
       ? `persist:pokemoncenter-${account.data.loginId}`
       : 'persist:pokemoncenter-default';
 
-    if (this.clearBrowserData) {
-      await clearBrowserData(partition);
+    {
+      const retryCount = this.getRetryCount(account.mail);
+      if (retryCount >= TASK_RETRY_CLEAR_THRESHOLD) {
+        await clearBrowserData(partition);
+      }
     }
 
     const targetSession = session.fromPartition(partition);
     await resetSessionProxy(targetSession);
+    // await this.injectAccountCookies(targetSession, account);
 
     const developmentModeConfig =
       (await getConfigValue('development_mode')) === 'true';
@@ -272,6 +278,7 @@ export class TaskQueueManager {
         window.webContents,
       );
     }
+    setupPermanentCookieInterceptor(window.webContents.session);
 
     this.setupWindowOpenHandler(window, partition, proxyInfo);
     this.setupChromeErrorHandler(window, account.mail);
@@ -289,6 +296,40 @@ export class TaskQueueManager {
     }
 
     return window;
+  }
+
+  private async injectAccountCookies(
+    targetSession: Electron.Session,
+    account: AccountEntity,
+  ): Promise<number> {
+    const cookies = account.data?.loginCookies || [];
+    if (!Array.isArray(cookies) || cookies.length === 0) {
+      return 0;
+    }
+    let count = 0;
+    for (const c of cookies) {
+      const domain = c.domain?.startsWith('.') ? c.domain.slice(1) : c.domain;
+      const base = c.secure ? `https://${domain}` : `http://${domain}`;
+      const p = c.path?.startsWith('/') ? c.path : `/${c.path || ''}`;
+      const url = `${base}${p}`;
+      try {
+        await targetSession.cookies.set({
+          url,
+          name: c.name,
+          value: c.value,
+          domain: c.domain,
+          path: c.path,
+          secure: c.secure,
+          httpOnly: c.httpOnly,
+          expirationDate:
+            c.expirationDate ||
+            Math.floor(Date.now() / 1000) + PERMANENT_COOKIE_TTL_SECONDS,
+          sameSite: c.sameSite,
+        });
+        count++;
+      } catch {}
+    }
+    return count;
   }
 
   private async getProxyInfo(
@@ -345,6 +386,7 @@ export class TaskQueueManager {
             childWindow.webContents,
           );
         }
+        setupPermanentCookieInterceptor(childWindow.webContents.session);
 
         childWindow.on('closed', () => {
           this.cleanupChildWindow(childWindow, childSessionKey);
@@ -608,7 +650,7 @@ export class TaskQueueManager {
 
       // 在 Windows 平台上，确保 isClosing 标志正确
       const isClosing = taskInfo.isClosing;
-      
+
       // 先删除任务信息，防止重复处理
       this.cleanupTaskInfo(taskInfo);
       this.runningTasks.delete(accountMail);
@@ -616,7 +658,7 @@ export class TaskQueueManager {
 
       // 然后处理窗口关闭逻辑
       await this.handleWindowClosed(accountMail, windowId, isClosing);
-      
+
       this.recalculateWindowPositions();
     });
   }
@@ -689,6 +731,19 @@ export class TaskQueueManager {
         console.log(
           `[TaskQueue] 窗口关闭（程序关闭），账号: ${accountMail}, 重试次数: ${retryCount}/${this.maxRetryCount}`,
         );
+
+        if (retryCount >= TASK_RETRY_CLEAR_THRESHOLD) {
+          const partition =
+            account.data?.loginId
+              ? `persist:pokemoncenter-${account.data.loginId}`
+              : 'persist:pokemoncenter-default';
+          await clearBrowserData(partition);
+          if (!account.data) {
+            account.data = {};
+          }
+          account.data.loginCookies = [];
+          await repo.save(account);
+        }
 
         if (retryCount <= this.maxRetryCount) {
           // 可以重试：重置状态为 NONE 并添加到队列
@@ -855,6 +910,38 @@ export class TaskQueueManager {
       .map(([accountMail]) => accountMail);
   }
 
+  public isWindowVisible(accountMail: string): boolean {
+    const taskInfo = this.runningTasks.get(accountMail);
+    if (!taskInfo) return false;
+    const win = taskInfo.window;
+    if (win.isDestroyed()) return false;
+    return win.isVisible();
+  }
+
+  public showWindowByMail(accountMail: string): boolean {
+    const taskInfo = this.runningTasks.get(accountMail);
+    if (!taskInfo) return false;
+    const win = taskInfo.window;
+    if (win.isDestroyed()) return false;
+    if (!win.isVisible()) {
+      win.show();
+      return true;
+    }
+    return false;
+  }
+
+  public hideWindowByMail(accountMail: string): boolean {
+    const taskInfo = this.runningTasks.get(accountMail);
+    if (!taskInfo) return false;
+    const win = taskInfo.window;
+    if (win.isDestroyed()) return false;
+    if (win.isVisible()) {
+      win.hide();
+      return true;
+    }
+    return false;
+  }
+
   public cleanupClosedWindow(accountMail: string): void {
     const taskInfo = this.runningTasks.get(accountMail);
     if (taskInfo?.window.isDestroyed()) {
@@ -1006,4 +1093,3 @@ export class TaskQueueManager {
     };
   }
 }
-

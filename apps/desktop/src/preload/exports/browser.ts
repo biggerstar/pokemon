@@ -60,7 +60,7 @@ if (location.href.includes('chrome-error://chromewebdata/')) {
 
 // if (location.href.startsWith('https://www.browserscan.net/zh/ipcheck/')) {
 //   setTimeout(() => {
-//     location.href = 'https://www.pokemoncenter-online.com/mypage/';;
+//     location.href = 'https://www.pokemoncenter-online.com/mypage/';
 //   }, 8000);
 // }
 

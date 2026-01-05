@@ -146,6 +146,13 @@ const __API__ = {
   getDevelopmentMode() {
     return ipcRenderer.invoke('get-development-mode');
   }
+  ,
+  toggleTaskWindowVisibility(accountMail: string) {
+    return ipcRenderer.invoke('toggle-task-window-visibility', accountMail);
+  },
+  isTaskWindowVisible(accountMail: string) {
+    return ipcRenderer.invoke('is-task-window-visible', accountMail);
+  }
 }
 
 window['__API__'] = __API__

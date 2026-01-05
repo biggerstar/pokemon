@@ -8,6 +8,7 @@ import {
   clearProxyForSession,
   proxyInfoMap,
   loginEventListeners,
+  setupPermanentCookieInterceptor,
 } from './common';
 
 // 窗口管理器 - 统一管理所有窗口配置和事件
@@ -91,6 +92,7 @@ export class WindowManager {
       sessionKey,
       childWindow.webContents,
     );
+    setupPermanentCookieInterceptor(childWindow.webContents.session);
 
     // 设置父子关系和事件监听
     this.setupChildWindowEvents(childWindow);
@@ -302,6 +304,7 @@ export class BrowserinternetView {
       sessionKey,
       this.win.webContents,
     );
+    setupPermanentCookieInterceptor(this.win.webContents.session);
 
     // 设置窗口开启处理器 - 使用窗口管理器
     this.setupWindowOpenHandler();
@@ -633,4 +636,3 @@ export async function setAccountForWindowManager(
 }
 
 export const browserinternetView = new BrowserinternetView();
-

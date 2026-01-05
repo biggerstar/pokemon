@@ -1,8 +1,8 @@
-import { ipcMain } from 'electron';
 import { AccountEntity, TaskStatus } from '@/orm/entities/account';
 import { AppDataSource } from '@/orm/data-source';
 import { TaskQueueManager } from '@/main/windows/browser/browser';
-import { ensureDataSourceReady, findAccountByMail } from './utils';
+import { ensureDataSourceReady, findAccountByMail, getAccountMailFromEvent } from './utils';
+import { POKEMONCENTER_COOKIE_DOMAINS } from './config';
 
 export function registerAccountManagementHandlers(ipcMain: typeof import('electron').ipcMain) {
   ipcMain.handle('get-account-info', async (_event, username?: string) => {
@@ -99,9 +99,11 @@ export function registerAccountManagementHandlers(ipcMain: typeof import('electr
       // 为每个账号添加窗口状态
       const accountsWithWindowStatus = result.map((account) => {
         const isWindowOpen = openWindowAccounts.includes(account.mail);
+        const isVisible = taskQueue.isWindowVisible(account.mail);
         return {
           ...account,
           windowStatus: isWindowOpen ? 'OPEN' : 'CLOSED',
+          windowVisible: isVisible,
         };
       });
 
@@ -111,6 +113,50 @@ export function registerAccountManagementHandlers(ipcMain: typeof import('electr
       console.error('Error getting accounts:', error);
       throw new Error(`Failed to get accounts: ${err.message}`);
     }
+  });
+
+  ipcMain.handle('save-login-cookies', async (event, mailFromRenderer?: string) => {
+    await ensureDataSourceReady();
+    const mail = getAccountMailFromEvent(event);
+    if (!mail) {
+      throw new Error('无法识别账号');
+    }
+    if (mailFromRenderer && mailFromRenderer !== mail) {
+      console.warn(`[save-login-cookies] 渲染进程传入的 mail 与窗口识别不一致: ${mailFromRenderer} != ${mail}`);
+    }
+    const repo = AppDataSource.getRepository(AccountEntity);
+    const account = await repo.findOne({ where: { mail } });
+    if (!account) {
+      throw new Error('账号不存在');
+    }
+    const wc = event.sender;
+    const sess = wc.session;
+    const allCookies = await sess.cookies.get({});
+    const filtered = allCookies.filter((c) =>
+      POKEMONCENTER_COOKIE_DOMAINS.some((d) => c.domain === d || c.domain.endsWith(`.${d}`)),
+    );
+    const dedupKey = (c: Electron.Cookie) => `${c.name}|${c.domain}|${c.path}`;
+    const seen = new Set<string>();
+    const stored = filtered
+      .filter((c) => {
+        const key = dedupKey(c);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .map((c) => ({
+        name: c.name,
+        value: c.value,
+        domain: c.domain,
+        path: c.path,
+        secure: c.secure,
+        httpOnly: c.httpOnly,
+        expirationDate: c.expirationDate,
+        sameSite: c.sameSite,
+      }));
+    account.data = { ...(account.data || {}), loginCookies: stored };
+    await repo.save(account);
+    return { saved: stored.length };
   });
 }
 
@@ -144,4 +190,3 @@ export async function initializeAccountStatus() {
 setTimeout(() => {
   initializeAccountStatus();
 }, 1000);
-

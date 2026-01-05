@@ -1,4 +1,5 @@
 import { session } from 'electron';
+import { PERMANENT_COOKIE_TTL_SECONDS } from '@/preload/site/pokemon-http/http/constant';
 
 // 代理信息接口
 export interface ProxyInfo {
@@ -13,6 +14,66 @@ export const proxyInfoMap = new Map<string, ProxyInfo>();
 
 // 存储 webContents 的 login 事件监听器，用于清理
 export const loginEventListeners = new Map<number, any>();
+
+const cookieInterceptorSessions = new WeakSet<Electron.Session>();
+function makePermanentCookieString(input: string): string {
+  const ttl = PERMANENT_COOKIE_TTL_SECONDS;
+  const expires = new Date(Date.now() + ttl * 1000).toUTCString();
+  const parts = input.split(';').map((p) => p.trim()).filter((p) => p.length > 0);
+  const nameValue = parts[0] ?? '';
+  const rest = parts.slice(1);
+  let isExpired = false;
+  for (const attr of rest) {
+    const [rawKey, ...valueParts] = attr.split('=');
+    const key = rawKey?.trim().toLowerCase();
+    const value = valueParts.join('=').trim();
+    if (key === 'max-age') {
+      const n = parseInt(value, 10);
+      if (!Number.isNaN(n) && n <= 0) {
+        isExpired = true;
+        break;
+      }
+    } else if (key === 'expires') {
+      const t = Date.parse(value);
+      if (!Number.isNaN(t) && t <= Date.now()) {
+        isExpired = true;
+        break;
+      }
+    }
+  }
+  if (isExpired) {
+    return input;
+  }
+  const attrs = rest.filter((attr) => {
+    const k = attr.split('=')[0]?.trim().toLowerCase();
+    return k !== 'expires' && k !== 'max-age';
+  });
+  attrs.push(`Expires=${expires}`);
+  attrs.push(`Max-Age=${ttl}`);
+  return [nameValue, ...attrs].join('; ');
+}
+export function setupPermanentCookieInterceptor(targetSession: Electron.Session): void {
+  if (cookieInterceptorSessions.has(targetSession)) {
+    return;
+  }
+  cookieInterceptorSessions.add(targetSession);
+  targetSession.webRequest.onHeadersReceived(
+    { urls: ['http://*/*', 'https://*/*'] },
+    (detail, callback) => {
+      const headers = detail.responseHeaders || {};
+      const newHeaders: Record<string, string | string[]> = { ...headers };
+      for (const key of Object.keys(headers)) {
+        if (key.toLowerCase() === 'set-cookie') {
+          const val = headers[key];
+          const arr = Array.isArray(val) ? val : typeof val === 'string' ? [val] : [];
+          const rewritten = arr.map((v) => makePermanentCookieString(v));
+          newHeaders[key] = rewritten;
+        }
+      }
+      callback({ responseHeaders: newHeaders });
+    },
+  );
+}
 
 /**
  * 解析代理字符串格式: http://username:password@host:port
@@ -253,4 +314,3 @@ export function resetSessionProxy(session: Electron.Session): Promise<void> {
       console.error('[Session] 重置代理失败:', err);
     });
 }
-

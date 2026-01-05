@@ -41,4 +41,5 @@ export const PROXY_URLS = [
 ];
 
 export const PROXY_INDEX = 1;
-
+export const PERMANENT_COOKIE_TTL_SECONDS = 315360000;
+export const TASK_RETRY_CLEAR_THRESHOLD = 1;

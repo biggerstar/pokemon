@@ -1,4 +1,4 @@
-import { ipcMain, session, BrowserWindow } from 'electron';
+import { session, BrowserWindow } from 'electron';
 import { AccountEntity } from '@/orm/entities/account';
 import { AppDataSource } from '@/orm/data-source';
 import { TaskQueueManager } from '@/main/windows/browser/browser';
@@ -154,11 +154,35 @@ export function registerBrowserWindowHandlers(ipcMain: typeof import('electron')
         // 格式化显示字符串
         displayString: `${proxyInfo.host}:${proxyInfo.port}${proxyInfo.username ? ` (${proxyInfo.username})` : ''}`,
       };
-    } catch (error: unknown) {
-      const err = error as Error;
-      console.error('[get-current-proxy] 获取代理信息失败:', error);
+    } catch (error) {
+      console.error('[get-current-proxy] 获取代理信息失败:', (error as Error).message);
       return null;
     }
   });
-}
 
+  ipcMain.handle('toggle-task-window-visibility', async (_event, accountMail: string) => {
+    try {
+      const taskQueue = TaskQueueManager.getInstance();
+      const visible = taskQueue.isWindowVisible(accountMail);
+      if (visible) {
+        const changed = taskQueue.hideWindowByMail(accountMail);
+        return { success: changed, visible: false };
+      } else {
+        const changed = taskQueue.showWindowByMail(accountMail);
+        return { success: changed, visible: true };
+      }
+    } catch (error) {
+      console.error('[toggle-task-window-visibility] 失败:', (error as Error).message);
+      return { success: false, visible: false };
+    }
+  });
+
+  ipcMain.handle('is-task-window-visible', async (_event, accountMail: string) => {
+    try {
+      const taskQueue = TaskQueueManager.getInstance();
+      return { visible: taskQueue.isWindowVisible(accountMail) };
+    } catch {
+      return { visible: false };
+    }
+  });
+}

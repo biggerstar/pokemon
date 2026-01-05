@@ -11,7 +11,7 @@ import {
 } from '@vben/layouts';
 import { preferences } from '@vben/preferences';
 import { useAccessStore, useUserStore } from '@vben/stores';
-import { Button as AButton } from 'ant-design-vue';
+import { Button as AButton, Space as ASpace } from 'ant-design-vue';
 import { computed, ref, watch } from 'vue';
 
 import { useAuthStore } from '#/store';

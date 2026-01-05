@@ -5,6 +5,31 @@ import { useColumns } from './data';
 import { Modal, Input, InputNumber, Button, message, Popconfirm } from 'ant-design-vue';
 import * as XLSX from 'xlsx';
 
+import type { VxeGridDefines } from 'vxe-table';
+
+interface StoredCookie {
+  name: string;
+  value: string;
+  domain: string;
+  path: string;
+  secure: boolean;
+  httpOnly: boolean;
+  expirationDate?: number;
+  sameSite?: 'unspecified' | 'no_restriction' | 'lax' | 'strict';
+}
+
+interface AccountRowData {
+  loginId?: string;
+  loginCookies?: StoredCookie[];
+  [key: string]: unknown;
+}
+
+interface AccountGridRow {
+  mail: string;
+  data?: AccountRowData;
+  [key: string]: unknown;
+}
+
 const [Grid, gridApi] = useVbenVxeGrid({
   gridOptions: {
     columns: useColumns(),
@@ -32,13 +57,19 @@ const [Grid, gridApi] = useVbenVxeGrid({
     },
     toolbarConfig: {
       custom: true,
-      export: false,
+      export: true,
       refresh: { code: 'query' },
       zoom: false,
+      tools: [
+        { code: 'importAccounts', icon: 'vxe-icon-upload', title: '导入账号' },
+        { code: 'proxyPool', icon: 'vxe-icon-link', title: '代理池管理' },
+        { code: 'captchaConfig', icon: 'vxe-icon-setting', title: '软件配置' },
+      ],
       slots: {
         buttons: 'toolbar_buttons'
       }
     },
+    exportConfig: {},
     proxyConfig: {
       ajax: {
         query: async () => {
@@ -64,7 +95,71 @@ const [Grid, gridApi] = useVbenVxeGrid({
   //   schema: useGridFormSchema(),
   //   compact: true,
   // }
+  gridEvents: {
+    toolbarToolClick: (event: VxeGridDefines.ToolbarToolClickEventParams) => {
+      const { code } = event;
+      if (code === 'importAccounts') {
+        openImportModal();
+      } else if (code === 'proxyPool') {
+        openProxyPoolModal();
+      } else if (code === 'captchaConfig') {
+        openCaptchaConfigModal();
+      }
+    }
+  }
 });
+
+function cookiesToCookieHeader(cookies: StoredCookie[]): string {
+  const pairs = cookies
+    .filter((c) => !!c && typeof c.name === 'string')
+    .map((c) => `${c.name}=${c.value ?? ''}`);
+  return pairs.join('; ');
+}
+
+function exportLoginCookies(): void {
+  const records = (gridApi.grid?.getCheckboxRecords?.() || []) as AccountGridRow[];
+  if (!records || records.length === 0) {
+    message.warn('请选择要导出的账号');
+    return;
+  }
+  const items = records
+    .map((r) => {
+      const cookies = r.data?.loginCookies ?? [];
+      const cookieString = cookiesToCookieHeader(cookies);
+      const base = {
+        mail: r.mail,
+        loginId: r.data?.loginId,
+        cookies,
+        cookieString,
+      };
+      return base;
+    })
+    .filter((x) => Array.isArray(x.cookies) && x.cookies.length > 0 && x.cookieString.length > 0);
+
+  if (items.length === 0) {
+    message.warn('选中的账号没有可导出的登录Cookie');
+    return;
+  }
+
+  // 如果只选择了一个账号，导出为该账号的纯文本 Cookie 字符串
+  // 如果选择了多个账号，导出为每行一个：mail<TAB>cookieString
+  const single = items.length === 1 ? items[0] : undefined;
+  const content = single
+    ? single.cookieString
+    : items.map((it) => `${it.mail}\t${it.cookieString}`).join('\n');
+
+  const blob = new Blob([content], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = single
+    ? `login-cookie-${single.mail}-${new Date().toISOString().replace(/[:.]/g, '-')}.txt`
+    : `login-cookies-${items.length}-${new Date().toISOString().replace(/[:.]/g, '-')}.txt`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 
 const importModalVisible = ref(false);
 const importText = ref('');
@@ -84,8 +179,7 @@ const developmentMode = ref(false);
 // const showWindow = ref(false);
 // const enableProxy = ref(true);
 const showWindow = ref(true);
-const enableProxy = ref(false);
-const clearBrowserData = ref(true); // 是否清除浏览器数据
+const enableProxy = ref(true);
 const maxRetryCount = ref(3); // 最大重试次数（默认3）
 const addToCartTiming = ref<'beforeLogin' | 'afterLogin'>('afterLogin'); // 添加购物车时机（默认登录前）
 const taskStatus = ref({ queueLength: 0, runningCount: 0, maxConcurrency: 0, isProcessing: false });
@@ -94,6 +188,8 @@ const isTaskRunning = ref(false);
 const isStarting = ref(false);
 let statusTimer: any = null;
 let selectionTimer: any = null;
+
+const CLEAR_BROWSER_DATA_ON_START_DEFAULT = false;
 
 // 响应式的选中记录数量
 const selectedRecordsCount = ref(0);
@@ -440,7 +536,16 @@ async function handleStartTasks() {
     // 将任务重新添加到主进程队列
     // 主进程会从数据库查询这些账号，筛选出 status === NONE 的账号（包括刚才重置的账号）
     // 然后通过 taskQueue.addTasks() 添加到队列中
-    const result = await __API__.startTasks(accountsToStart, maxConcurrency.value, showWindow.value, enableProxy.value, clearBrowserData.value, maxRetryCount.value, addToCartTiming.value, defaultCaptchaService.value);
+    const result = await __API__.startTasks(
+      accountsToStart,
+      maxConcurrency.value,
+      showWindow.value,
+      enableProxy.value,
+      CLEAR_BROWSER_DATA_ON_START_DEFAULT,
+      maxRetryCount.value,
+      addToCartTiming.value,
+      defaultCaptchaService.value
+    );
     if (result.success) {
       const messageText = retryCount > 0
         ? `${result.message}（其中 ${retryCount} 个账号为重试）`
@@ -593,6 +698,22 @@ async function handleResetStatus() {
   } catch (error: any) {
     console.error('Reset status error:', error);
     message.error('重置状态失败: ' + error.message);
+  }
+}
+
+async function handleClearBrowserData() {
+  const records = gridApi.grid?.getCheckboxRecords() || [];
+  if (records.length === 0) {
+    message.warn('请选择要清除浏览器数据的账号');
+    return;
+  }
+  try {
+    const mails = records.map((item: any) => item.mail);
+    const result = await __API__.clearBrowserData(mails);
+    message.success(`已清除 ${result.clearedCount} 个账号的浏览器数据`);
+  } catch (error: any) {
+    console.error('Clear browser data error:', error);
+    message.error('清除浏览器数据失败: ' + error.message);
   }
 }
 
@@ -820,17 +941,17 @@ function openProxyPoolModal() {
 async function handleCheckProxy(proxy: any) {
   const proxyItem = proxyPoolList.value.find(p => p.id === proxy.id);
   if (!proxyItem) return;
-  
+
   proxyItem.checkStatus = 'checking';
   proxyItem.checkLatency = undefined;
   proxyItem.checkError = undefined;
-  
+
   try {
     const result = await __API__.checkProxyStatus(proxy.proxy);
     proxyItem.checkStatus = result.success ? 'success' : 'failed';
     proxyItem.checkLatency = result.latency;
     proxyItem.checkError = result.error;
-    
+
     if (result.success) {
       message.success(`代理检查成功，延迟: ${result.latency}ms`);
     } else {
@@ -846,15 +967,15 @@ async function handleCheckProxy(proxy: any) {
 // 一键检查所有启用的代理
 async function handleCheckAllProxies() {
   if (isCheckingProxies.value) return;
-  
+
   const enabledProxies = proxyPoolList.value.filter(p => p.enabled);
   if (enabledProxies.length === 0) {
     message.warn('没有启用的代理需要检查');
     return;
   }
-  
+
   isCheckingProxies.value = true;
-  
+
   // 重置所有代理的检查状态
   proxyPoolList.value.forEach(proxy => {
     if (proxy.enabled) {
@@ -863,11 +984,11 @@ async function handleCheckAllProxies() {
       proxy.checkError = undefined;
     }
   });
-  
+
   try {
     const proxyIds = enabledProxies.map(p => p.id);
     const results = await __API__.checkProxiesStatus(proxyIds);
-    
+
     // 更新检查结果
     results.forEach(result => {
       const proxyItem = proxyPoolList.value.find(p => p.id === result.id);
@@ -877,7 +998,7 @@ async function handleCheckAllProxies() {
         proxyItem.checkError = result.error;
       }
     });
-    
+
     const successCount = results.filter(r => r.success).length;
     const failCount = results.length - successCount;
     message.success(`代理检查完成: ${successCount} 个成功, ${failCount} 个失败`);
@@ -958,14 +1079,15 @@ function openCaptchaConfigModal() {
         <Popconfirm v-if="hasSelectedRecords" title="是否重置选中账号的状态？" @confirm="handleResetStatus">
           <Button type="default" class="ml-2">重置状态</Button>
         </Popconfirm>
+        <Popconfirm v-if="hasSelectedRecords" title="是否清除选中账号的浏览器数据？" @confirm="handleClearBrowserData">
+          <Button type="default" class="ml-2">清除浏览器数据</Button>
+        </Popconfirm>
+        <!-- <Button v-if="hasSelectedRecords" type="default" class="ml-2" @click="exportLoginCookies">
+          导出登录Cookie
+        </Button> -->
         <span class="ml-4 text-sm text-gray-600">
           任务进度: {{ taskStatus.runningCount }}/{{ totalTasks }} | 当前运行: {{ taskStatus.runningCount }}
         </span>
-      </template>
-      <template #toolbar-tools>
-        <Button type="default" @click="openImportModal" class="ml-2">导入账号</Button>
-        <Button type="default" @click="openProxyPoolModal" class="ml-2">代理池管理</Button>
-        <Button type="default" @click="openCaptchaConfigModal" class="ml-2">软件配置</Button>
       </template>
     </Grid>
 
@@ -998,12 +1120,6 @@ function openCaptchaConfigModal() {
         <input type="checkbox" v-model="enableProxy" class="mr-2" />
         <span class="text-sm text-gray-600">启用后：如果账号有指定代理则使用指定代理，否则从代理池随机选择</span>
       </div>
-      <!-- 暂时不显示清除浏览器数据 -->
-      <!-- <div class="mb-4">
-        <label class="block mb-2">清除浏览器数据:</label>
-        <input type="checkbox" v-model="clearBrowserData" class="mr-2" />
-        <span class="text-sm text-gray-600">每次启动窗口时清除浏览器数据（包括 cookies、localStorage 等）</span>
-      </div> -->
       <div class="mb-4">
         <label class="block mb-2">添加购物车时机:</label>
         <select v-model="addToCartTiming" class="w-full p-2 border rounded">

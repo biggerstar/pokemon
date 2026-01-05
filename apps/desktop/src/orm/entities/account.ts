@@ -42,6 +42,18 @@ export interface AccountData {
   addToCartTiming?: 'beforeLogin' | 'afterLogin';
   // 验证码服务配置: 'capmonster' | '2captcha'，默认为 'capmonster'
   captchaService?: 'capmonster' | '2captcha';
+  loginCookies?: StoredCookie[];
+}
+
+export interface StoredCookie {
+  name: string;
+  value: string;
+  domain: string;
+  path: string;
+  secure: boolean;
+  httpOnly: boolean;
+  expirationDate?: number;
+  sameSite?: 'strict' | 'lax' | 'no_restriction' | 'unspecified';
 }
 
 @Entity()

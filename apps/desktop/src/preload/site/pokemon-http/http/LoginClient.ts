@@ -6,6 +6,7 @@ import {
   GIGYA_API_KEY,
   SSO_KEY,
 } from './constant';
+import { PERMANENT_COOKIE_TTL_SECONDS } from './constant';
 import axios, { AxiosInstance } from 'axios';
 import { ipcRenderer } from 'electron';
 import {
@@ -68,9 +69,9 @@ export class LoginClient {
     domain: string,
     path: string = '/',
   ) {
-    // 在浏览器中，只能设置当前域名或父域名的 cookie
-    // 如果 domain 以 . 开头，表示可以被子域名共享
-    const cookieString = `${name}=${value}; path=${path}; domain=${domain}${location.protocol === 'https:' ? '; Secure' : ''}; SameSite=None`;
+    const ttl = PERMANENT_COOKIE_TTL_SECONDS;
+    const expires = new Date(Date.now() + ttl * 1000).toUTCString();
+    const cookieString = `${name}=${value}; path=${path}; domain=${domain}; Expires=${expires}; Max-Age=${ttl}${location.protocol === 'https:' ? '; Secure' : ''};`;
     document.cookie = cookieString;
   }
 
@@ -236,8 +237,8 @@ export class LoginClient {
         console.info('regToken:', regToken);
         this.regToken = regToken;
         this.uid = UID;
-        localStorage.setItem('regToken', regToken);
-        localStorage.setItem('uid', UID);
+        this.uid && localStorage.setItem('uid', UID);
+        this.regToken && localStorage.setItem('regToken', regToken);
         return '2fa';
       })
       .catch((error) => {
@@ -344,6 +345,13 @@ export class LoginClient {
     if (!this.mail2AuthCode) {
       throw new Error('mail2AuthCode is required');
     }
+    const data = {
+      mockModeFlg: 'false',
+      csrf_token: this.csrfToken,
+      apiUidSignatureUid: this.uid,
+      regToken: this.regToken,
+      dwfrm_factor2Auth_authCode: String(this.mail2AuthCode).trim(),
+    };
     return axios
       .request({
         url: 'https://www.pokemoncenter-online.com/on/demandware.store/Sites-POL-Site/ja_JP/Factor2Auth-Authentication',
@@ -355,13 +363,7 @@ export class LoginClient {
           'cache-control': 'no-cache',
           'content-type': 'application/x-www-form-urlencoded;',
         },
-        data: {
-          mockModeFlg: 'false',
-          csrf_token: this.csrfToken,
-          apiUidSignatureUid: this.uid,
-          regToken: this.regToken,
-          dwfrm_factor2Auth_authCode: this.mail2AuthCode,
-        },
+        data: data,
       })
       .then((res) => {
         console.log('[邮件验证码] mail2faApi 响应:', res.data);
@@ -369,7 +371,7 @@ export class LoginClient {
       })
       .catch((error) => {
         console.error('[邮件验证码] mail2faApi 请求失败:', error);
-        throw error;
+        return false;
       });
   }
 
@@ -388,7 +390,7 @@ export class LoginClient {
       `[邮件验证码] 开始查询时间: ${startTimeDate.toISOString()} (timestamp: ${startTime})`,
     );
     await TaskManager.updateStatus(
-      `[邮件验证码] 开始查询，只接受 ${startTimeDate.toISOString()} 之后发送的邮件`,
+      `[邮件验证码] 开始查询，只接受 ${this.taskInfo.loginId} ${startTimeDate.toISOString()} 之后发送的邮件`,
     );
 
     // 第一次尝试获取，传入 startTime
@@ -478,10 +480,6 @@ export class LoginClient {
     this.uid = res.userInfo.UID ?? this.uid;
     this.uidSig = res.userInfo.UIDSig ?? this.uidSig;
     this.uidSignature = res.userInfo.UIDSignature ?? this.uidSignature;
-    localStorage.setItem('login_token', this.login_token);
-    localStorage.setItem('uid', this.uid);
-    localStorage.setItem('uidSig', this.uidSig);
-    localStorage.setItem('uidSignature', this.uidSignature);
     console.info(
       'finalizeRegistrationApi response: ',
       res,
@@ -509,7 +507,7 @@ export class LoginClient {
     return !!this.finalRegistrationToken;
   }
 
-  private async fetchUidSigAndSignature(): Promise<void> {
+  private async fetchUidSigAndSignature(): Promise<boolean> {
     return this.axios
       .request({
         url: 'https://www.pokemoncenter-online.com/on/demandware.store/Sites-POL-Site/ja_JP/Account-Login',
@@ -531,20 +529,38 @@ export class LoginClient {
       })
       .then((res) => {
         console.log('[UID签名] genUidSigAndSignature 响应:', res.data);
+        this.login_token &&
+          localStorage.setItem('login_token', this.login_token);
+        this.uid && localStorage.setItem('uid', this.uid);
+        this.uidSig && localStorage.setItem('uidSig', this.uidSig);
+        this.uidSignature &&
+          localStorage.setItem('uidSignature', this.uidSignature);
+        return true;
       })
       .catch((error) => {
         console.error('[UID签名] genUidSigAndSignature 请求失败:', error);
-        throw error;
+        return false;
       });
+  }
+
+  public clearEnv() {
+    this.regToken = '';
+    localStorage.setItem('regToken', '');
+    this.uid = '';
+    localStorage.setItem('uid', '');
+    this.login_token = '';
+    localStorage.setItem('login_token', '');
+    this.uidSig = '';
+    localStorage.setItem('uidSig', '');
+    this.uidSignature = '';
+    localStorage.setItem('uidSignature', '');
+    this.dgftTokenApiKey = '';
+    localStorage.setItem('dgftTokenApiKey', '');
   }
 
   public async login(): Promise<boolean> {
     try {
-      const isLoggedIn = this.isLoggedIn();
-      if (isLoggedIn) {
-        await TaskManager.updateStatus('[登录] 已登录，跳过登录流程');
-        return true;
-      }
+      this.clearEnv();
       this.injectCookie();
 
       await TaskManager.updateStatus('[验证码] 开始解决 reCaptcha');
@@ -643,8 +659,25 @@ export class LoginClient {
       await TaskManager.updateStatus('[邮件验证码] 开始提交邮件验证码');
       const mail2faSuccess = await this.mail2faApi();
       if (!mail2faSuccess) {
-        await TaskManager.updateStatus('[邮件验证码] 邮件验证码认证失败');
+        await TaskManager.updateStatus('[邮件验证码] 提交登录失败');
         return false;
+        // 标记当前验证码为已使用/不可用，避免再次返回
+        // if (this.mail2AuthCode) {
+        //   this.usedMail2AuthCodes.add(this.mail2AuthCode);
+        // }
+        // const retryCode = await this.getNewMail2AuthCode();
+        // if (!retryCode) {
+        //   await TaskManager.updateStatus(
+        //     '[邮件验证码] 重新获取失败，未获取到新的验证码',
+        //   );
+        //   return false;
+        // }
+        // this.mail2AuthCode = retryCode;
+        // const mail2faRetrySuccess = await this.mail2faApi();
+        // if (!mail2faRetrySuccess) {
+        //   await TaskManager.updateStatus('[邮件验证码] 二次提交仍失败');
+        //   return false;
+        // }
       }
       await TaskManager.updateStatus('[邮件验证码] 邮件验证码认证成功');
 
@@ -655,8 +688,16 @@ export class LoginClient {
       }
       await TaskManager.updateStatus('[登录] 最终注册 TOKEN 成功');
 
-      await this.fetchUidSigAndSignature();
+      const isSignatureSuccess = await this.fetchUidSigAndSignature();
+      if (!isSignatureSuccess) {
+        await TaskManager.updateStatus('[登录] 获取 UID 签名失败');
+        return false;
+      }
       await TaskManager.updateStatus('[登录] 获取 UID 签名成功');
+      await ipcRenderer.invoke(
+        'save-login-cookies',
+        TaskManager.getCurrentAccountMail(),
+      );
       return true;
     } catch (error: any) {
       console.error('[登录流程] 发生错误:', error);
@@ -834,6 +875,7 @@ export class LoginClient {
     }
     if (!this.dgftTokenApiKey) {
       await TaskManager.updateStatus('[支付] 没有找到dgftTokenApiKey');
+      debugger;
       throw new Error('[支付] 没有找到dgftTokenApiKey');
     }
 
@@ -989,9 +1031,10 @@ export class LoginClient {
     console.info('getAccountInfo response: ', response);
     const { errorMessage, errorCode, errorDetails } = response.data;
     if (errorCode > 10000) {
-      throw new Error(
+      console.log(
         `[获取账号信息] 获取账号信息失败: ${errorDetails || errorMessage}`,
       );
+      return false;
     }
     return response.data;
   }

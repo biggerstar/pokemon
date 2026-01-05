@@ -40,6 +40,8 @@ declare global {
     resetAccountsStatus(accountMails: string[]): Promise<{ success: boolean; count: number }>
     clearBrowserData(accountMails?: string[]): Promise<{ success: boolean; message: string; clearedCount: number }>
     updateAccountsAddToCartTiming(accountMails: string[], timing: 'beforeLogin' | 'afterLogin'): Promise<{ success: boolean; count: number }>
+    toggleTaskWindowVisibility(accountMail: string): Promise<{ success: boolean; visible: boolean }>
+    isTaskWindowVisible(accountMail: string): Promise<{ visible: boolean }>
     // 代理池相关 API
     getProxyPool(): Promise<Array<{ id: string; proxy: string; name?: string; enabled: boolean; created_time: Date; updated_time: Date }>>
     addProxyToPool(proxy: string, name?: string): Promise<{ id: string; proxy: string; name?: string; enabled: boolean; created_time: Date; updated_time: Date }>
