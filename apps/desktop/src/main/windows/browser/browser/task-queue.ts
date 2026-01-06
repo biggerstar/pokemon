@@ -15,7 +15,7 @@ import {
   loginEventListeners,
   setupPermanentCookieInterceptor,
 } from './common';
-import { PERMANENT_COOKIE_TTL_SECONDS, TASK_RETRY_CLEAR_THRESHOLD } from '@/preload/site/pokemon-http/http/constant';
+import { PERMANENT_COOKIE_TTL_SECONDS, TASK_RETRY_CLEAR_THRESHOLD, TASK_STATUS_TEXT_NETWORK_UNAVAILABLE, TASK_STATUS_TEXT_KEYWORD_TIMEOUT } from '@/preload/site/pokemon-http/http/constant';
 
 interface TaskWindowInfo {
   window: BrowserWindow;
@@ -232,7 +232,13 @@ export class TaskQueueManager {
     {
       const retryCount = this.getRetryCount(account.mail);
       if (retryCount >= TASK_RETRY_CLEAR_THRESHOLD) {
-        await clearBrowserData(partition);
+        const blockClear =
+          !!account.statusText &&
+          (account.statusText.includes(TASK_STATUS_TEXT_NETWORK_UNAVAILABLE) ||
+            account.statusText.includes(TASK_STATUS_TEXT_KEYWORD_TIMEOUT));
+        if (!blockClear) {
+          await clearBrowserData(partition);
+        }
       }
     }
 
@@ -733,16 +739,22 @@ export class TaskQueueManager {
         );
 
         if (retryCount >= TASK_RETRY_CLEAR_THRESHOLD) {
+          const blockClear =
+            !!account.statusText &&
+            (account.statusText.includes(TASK_STATUS_TEXT_NETWORK_UNAVAILABLE) ||
+              account.statusText.includes(TASK_STATUS_TEXT_KEYWORD_TIMEOUT));
           const partition =
             account.data?.loginId
               ? `persist:pokemoncenter-${account.data.loginId}`
               : 'persist:pokemoncenter-default';
-          await clearBrowserData(partition);
-          if (!account.data) {
-            account.data = {};
+          if (!blockClear) {
+            await clearBrowserData(partition);
+            if (!account.data) {
+              account.data = {};
+            }
+            account.data.loginCookies = [];
+            await repo.save(account);
           }
-          account.data.loginCookies = [];
-          await repo.save(account);
         }
 
         if (retryCount <= this.maxRetryCount) {

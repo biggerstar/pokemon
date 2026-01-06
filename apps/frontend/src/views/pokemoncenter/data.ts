@@ -28,7 +28,9 @@ interface StoredCookie {
   sameSite?: 'unspecified' | 'no_restriction' | 'lax' | 'strict';
 }
 
-const formatCookieField = (cookies: StoredCookie[] | null | undefined): string => {
+const formatCookieField = (
+  cookies: StoredCookie[] | null | undefined,
+): string => {
   if (!Array.isArray(cookies) || cookies.length === 0) return '';
   const pairs = cookies
     .filter((c) => !!c && typeof c.name === 'string')
@@ -81,7 +83,7 @@ export function useColumns(): VxeTableGridOptions['columns'] {
       field: 'status',
       title: 'Status',
       width: 120,
-      // sortable: true,
+      sortable: true,
       cellRender: {
         name: 'CellTag',
         options: [
@@ -170,7 +172,8 @@ export function useColumns(): VxeTableGridOptions['columns'] {
       field: 'data.loginCookies',
       title: 'Cookie',
       width: 230,
-      formatter: ({ cellValue }) => formatCookieField(cellValue as StoredCookie[]),
+      formatter: ({ cellValue }) =>
+        formatCookieField(cellValue as StoredCookie[]),
     },
     {
       field: 'mail',
@@ -196,6 +199,7 @@ export function useColumns(): VxeTableGridOptions['columns'] {
     {
       field: 'data.profileTitle',
       title: 'Profile Title',
+      sortable: true,
       width: 150,
     },
     {

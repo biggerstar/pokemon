@@ -39,9 +39,9 @@ async function addToCart(loginClient: LoginClient): Promise<boolean> {
 
     // 多次尝试都失败
     if (addToCartTryCount >= MAX_TRY_COUNT) {
-      await TaskManager.errorComplete(
-        '[添加到购物车] 多次尝试确认添加购物车失败',
-      );
+      // await TaskManager.errorComplete(
+      //   '[添加到购物车] 多次尝试确认添加购物车失败',
+      // );
       return false;
     }
 

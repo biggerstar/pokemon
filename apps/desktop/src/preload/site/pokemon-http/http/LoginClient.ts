@@ -31,6 +31,8 @@ export class LoginClient {
   public taskInfo: AccountData;
   private dgftTokenApiKey?: string;
   private finalRegistrationToken?: string;
+  private creditCardToken?: string;
+  private cardHideId?: string;
   private login_token?: string;
   private uidSig?: string;
   private uidSignature?: string;
@@ -54,7 +56,7 @@ export class LoginClient {
     this.login_token = localStorage.getItem('login_token') || '';
     this.uidSig = localStorage.getItem('uidSig') || '';
     this.uidSignature = localStorage.getItem('uidSignature') || '';
-    this.dgftTokenApiKey = localStorage.getItem('dgftTokenApiKey') || '';
+    // this.dgftTokenApiKey = localStorage.getItem('dgftTokenApiKey') || '';
     this.setUsername(this.taskInfo.loginId);
     this.setPassword(this.taskInfo.loginPass);
   }
@@ -623,10 +625,13 @@ export class LoginClient {
             await TaskManager.updateStatus('[认证] 初始化 TFA 成功');
 
             await TaskManager.updateStatus('[认证] 开始二次认证');
-            const twoAuthSuccess = await this.factor2AuthApi();
+            let twoAuthSuccess = await this.factor2AuthApi();
             if (!twoAuthSuccess) {
-              await TaskManager.updateStatus('[认证] 二次认证失败');
-              continue;
+              twoAuthSuccess = await this.factor2AuthApi();
+              if (!twoAuthSuccess) {
+                await TaskManager.updateStatus('[认证] 二次认证失败');
+                continue;
+              }
             }
             await TaskManager.updateStatus('[认证] 二次认证成功');
             hasSuccess = true;
@@ -657,10 +662,14 @@ export class LoginClient {
       await TaskManager.updateStatus('[邮件验证码] 邮件验证码获取成功');
 
       await TaskManager.updateStatus('[邮件验证码] 开始提交邮件验证码');
-      const mail2faSuccess = await this.mail2faApi();
+      let mail2faSuccess = await this.mail2faApi();
       if (!mail2faSuccess) {
         await TaskManager.updateStatus('[邮件验证码] 提交登录失败');
-        return false;
+        mail2faSuccess = await this.mail2faApi();
+        if (!mail2faSuccess) {
+          await TaskManager.updateStatus('[邮件验证码] 再次提交登录失败');
+          return false;
+        }
         // 标记当前验证码为已使用/不可用，避免再次返回
         // if (this.mail2AuthCode) {
         //   this.usedMail2AuthCodes.add(this.mail2AuthCode);
@@ -688,10 +697,14 @@ export class LoginClient {
       }
       await TaskManager.updateStatus('[登录] 最终注册 TOKEN 成功');
 
-      const isSignatureSuccess = await this.fetchUidSigAndSignature();
+      let isSignatureSuccess = await this.fetchUidSigAndSignature();
       if (!isSignatureSuccess) {
         await TaskManager.updateStatus('[登录] 获取 UID 签名失败');
-        return false;
+        isSignatureSuccess = await this.fetchUidSigAndSignature();
+        if (!isSignatureSuccess) {
+          await TaskManager.updateStatus('[登录] 再次获取 UID 签名失败');
+          // return false;
+        }
       }
       await TaskManager.updateStatus('[登录] 获取 UID 签名成功');
       await ipcRenderer.invoke(
@@ -946,26 +959,41 @@ export class LoginClient {
       }
     }
     await TaskManager.updateStatus('[支付] 开始提交信用卡信息');
-
+    const data = {
+      token_api_key: this.dgftTokenApiKey?.trim(),
+      card_number: this.taskInfo.cardNumber.trim(),
+      card_expire:
+        this.taskInfo.expiredMonth.trim() +
+        '/' +
+        this.taskInfo.expiredYear.trim(),
+      security_code: this.taskInfo.securityCode.trim(),
+      cardholder_name: this.taskInfo.cardName.trim(),
+      lang: 'ja',
+    };
+    console.info(
+      `🚀 ~ LoginClient ~ submitFirstPaymentCreditCard ~ data:`,
+      data,
+    );
     const response = await this.axios.request({
       url: 'https://api3.veritrans.co.jp/4gtoken',
       method: 'POST',
       headers: {
         'content-type': 'application/json; charset=utf-8',
       },
-      data: {
-        token_api_key: this.dgftTokenApiKey,
-        card_number: this.taskInfo.cardNumber,
-        card_expire:
-          this.taskInfo.expiredMonth + '/' + this.taskInfo.expiredYear,
-        security_code: this.taskInfo.securityCode,
-        cardholder_name: this.taskInfo.cardName,
-        lang: 'ja',
-      },
+      data: data,
     });
     console.info('submitFirstPaymentCreditCard response: ', response);
-
+    let isDevelopmentMode = false;
+    try {
+      isDevelopmentMode = await ipcRenderer.invoke('get-development-mode');
+    } catch (error) {}
+    localStorage.setItem('CreditCardResponse', JSON.stringify(response.data));
+    if (isDevelopmentMode) {
+      debugger;
+    }
     if (response.data.code === 'success') {
+      this.creditCardToken = response.data.token;
+      this.cardHideId = response.data.req_card_number;
       await TaskManager.updateStatus(`[支付] 提交信用卡信息成功`);
     } else {
       await TaskManager.updateStatus(
@@ -973,6 +1001,46 @@ export class LoginClient {
       );
       throw new Error(`[支付] 提交信用卡信息失败: ${response.data.message}`);
     }
+  }
+
+  private async saveCreditCardTokenToPolemon(): Promise<boolean> {
+    if (!this.captchaToken) {
+      await TaskManager.updateStatus('[支付] 没有找到 captchaToken');
+    }
+    if (!this.csrfToken) {
+      await TaskManager.updateStatus('[支付] 没有找到 csrfToken');
+    }
+    if (this.uid) {
+      await TaskManager.updateStatus('[支付] 没有找到 uid');
+    }
+    if (this.uidSignature) {
+      await TaskManager.updateStatus('[支付] 没有找到 uidSignature');
+    }
+    return this.axios
+      .request({
+        url: 'https://www.pokemoncenter-online.com/on/demandware.store/Sites-POL-Site/ja_JP/PaymentInstruments-SavePayment',
+        method: 'POST',
+        headers: {
+          accept: 'application/json, text/javascript, */*; q=0.01',
+          'accept-encoding': 'gzip, deflate, br, zstd',
+          'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
+          'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        },
+        data: {
+          token: this.creditCardToken,
+          cardId: null,
+          csrf_token: this.csrfToken,
+          apiUidSignatureUid: this.uid,
+          apiUidSignatureUIDSignature: this.uidSignature,
+          apiUidSignaturesignatureTimestamp: Math.floor(Date.now() / 1000),
+        },
+      })
+      .then((res) => {
+        return true;
+      })
+      .catch((err) => {
+        return false;
+      });
   }
 
   /**
@@ -995,11 +1063,12 @@ export class LoginClient {
       data: {
         csrf_token: this.csrfToken,
         dwfrm_billing_paymentMethod: 'CREDIT_CARD',
-        maskedNewCardNumber: '',
-        creditCardtoken: '',
-        dwfrm_billing_creditCardFields_cardType: '',
-        dwfrm_billing_creditCardFields_expirationMonth: '',
-        dwfrm_billing_creditCardFields_expirationYear: '',
+        maskedNewCardNumber: this.cardHideId,
+        creditCardtoken: this.creditCardToken,
+        dwfrm_billing_creditCardFields_cardType: 'Visa',
+        checkNewCard: 'on',
+        dwfrm_billing_creditCardFields_expirationMonth: this.taskInfo.expiredMonth.trim(),
+        dwfrm_billing_creditCardFields_expirationYear: this.taskInfo.expiredYear.trim(),
       },
     });
   }
@@ -1102,6 +1171,12 @@ export class LoginClient {
       for (let i = 0; i < 2; i++) {
         try {
           await this.submitFirstPaymentCreditCard();
+          // const isCreditCardSaved = await this.saveCreditCardTokenToPolemon();
+          // if (!isCreditCardSaved) {
+          //   TaskManager.updateStatus('[支付] 提交信用卡信息到平台绑定失败');
+          //   continue;
+          // }
+          TaskManager.updateStatus('[支付] 提交信用卡信息到平台绑定成功');
           submitFirstPaymentCreditCardSuccess = true;
         } catch (error) {
           if (error?.message?.includes('没有找到')) break;
